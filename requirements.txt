@@ -1,0 +1,5 @@
+Django>=5.1,<6.0
+psycopg[binary]>=3.2
+whitenoise>=6.8
+gunicorn>=23.0
+python-dotenv>=1.0

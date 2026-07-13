@@ -1,0 +1,3 @@
+code,name,category,standard_duration_minutes,base_price,active
+HAIRCUT,Haircut & Styling,Hair,45,500,true
+FACIAL,Basic Facial,Skin,60,1000,true
