@@ -10,7 +10,7 @@ user explicitly requests it.
 - Run Python with `.venv/bin/python` and pip with `.venv/bin/pip` when the shell is
   not activated.
 - Dependencies are declared in `requirements.txt`.
-- Local development uses SQLite in `db.sqlite3`.
+- Local development uses SQLite in `salon_db.sqlite3`.
 - Environment variable examples are documented in `.env.example`; never commit a
   real `.env` or secrets.
 
@@ -31,6 +31,5 @@ After Python changes, run the relevant checks from the project root:
 .venv/bin/python manage.py test
 ```
 
-Do not modify `db.sqlite3`, generate migrations, seed data, or run destructive
+Do not modify `salon_db.sqlite3`, generate migrations, seed data, or run destructive
 database commands unless the requested task requires it.
-

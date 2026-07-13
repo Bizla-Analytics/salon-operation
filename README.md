@@ -31,6 +31,10 @@ python manage.py seed_demo
 python manage.py runserver
 ```
 
+Run `seed_demo` only when setting up development demo data. Do not run it during
+normal application startup or production deployments because it resets the demo
+accounts and demo SOP configuration.
+
 Open `http://127.0.0.1:8000/`.
 
 ## Demo accounts
@@ -77,6 +81,8 @@ The employee sees only their assigned jobs. Inside a job, the page shows one cur
 ## Production notes
 
 - Set a secure `SECRET_KEY`, `DEBUG=False`, and explicit `ALLOWED_HOSTS`.
+- Keep `salon_db.sqlite3` outside Git-managed deployment files and back it up
+  before every deployment. The database is intentionally ignored by Git.
 - Replace SQLite with PostgreSQL for real multi-user deployment.
 - Serve with Gunicorn and Nginx, or deploy to a Django-capable host.
 - Add HTTPS before using customer or employee data.

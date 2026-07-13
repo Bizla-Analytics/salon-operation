@@ -1,13 +1,6 @@
 service,sequence,phase,task_type,title,instructions,required,can_skip,skip_reason_required,quick_action,active
-HAIRCUT,10,BEFORE,SERVICE,Escort customer to chair,,true,false,false,true,true
-HAIRCUT,20,BEFORE,CONSULT,Consult and confirm requested style,,true,false,false,true,true
-HAIRCUT,30,BEFORE,TOWEL,Allocate clean towel and cape,,true,false,false,true,true
-HAIRCUT,40,BEFORE,HYGIENE,Confirm tools are cleaned and sanitized,,true,false,false,true,true
-HAIRCUT,50,DURING,SERVICE,Pre-cut hair wash,Complete only when required,false,true,true,true,true
-HAIRCUT,60,DURING,SERVICE,Hair cutting,,true,false,false,true,true
-HAIRCUT,70,DURING,SERVICE,Post-cut wash,Complete only when required,false,true,true,true,true
-HAIRCUT,80,FINISHING,SERVICE,Dry and style hair,,true,false,false,true,true
-HAIRCUT,90,FINISHING,QUALITY,Show result and confirm satisfaction,,true,false,false,true,true
-HAIRCUT,100,FINISHING,RECOMMEND,Record optional recommendation,Do not pressure customer,false,true,false,true,true
-HAIRCUT,110,AFTER,HYGIENE,Clean and sanitize tools and workstation,,true,false,false,true,true
-HAIRCUT,120,AFTER,TOWEL,Send used towel and cape to laundry allocation,,true,false,false,true,true
+HAIRCUT,10,BEFORE,CONSULT,Consult customer and confirm requested style,,true,false,false,true,true
+HAIRCUT,20,BEFORE,HYGIENE,Confirm tools are cleaned and sanitized,,true,false,false,true,true
+HAIRCUT,30,DURING,SERVICE,Complete haircut and styling,,true,false,false,true,true
+HAIRCUT,40,FINISHING,QUALITY,Show result and confirm customer satisfaction,,true,false,false,true,true
+HAIRCUT,50,AFTER,HYGIENE,Clean tools and workstation,,true,false,false,true,true

@@ -20,10 +20,10 @@ htmlcov/
 # Django-generated files
 staticfiles/
 *.log
+*.sqlite3
 
 # Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-

@@ -78,7 +78,7 @@ def new_visit(request):
         with transaction.atomic():
             mobile=form.cleaned_data['mobile']; customer=Customer.objects.filter(mobile=mobile).first() if mobile else None
             customer=customer or Customer.objects.create(name=form.cleaned_data['customer_name'],mobile=mobile)
-            visit=Visit.objects.create(branch=branch,customer=customer,token_number=form.cleaned_data['token_number'],status='ASSIGNED',created_by=request.user)
+            visit=Visit.objects.create(branch=branch,customer=customer,status='ASSIGNED',created_by=request.user)
             VisitService.objects.create(visit=visit,service=form.cleaned_data['service'],employee=form.cleaned_data['employee'],chair=form.cleaned_data['chair'],assigned_by=request.user)
         messages.success(request,'Service assigned successfully.'); return redirect('manager_dashboard')
     return render(request,'operations/form.html',{'form':form,'title':'Create visit and assign service'})
@@ -99,9 +99,12 @@ def verify_service(request,pk):
 def add_invoice(request,visit_id):
     visit=get_object_or_404(Visit,pk=visit_id,branch=user_branch(request.user)); form=InvoiceForm(request.POST or None)
     if request.method=='POST' and form.is_valid():
-        inv=form.save(commit=False); inv.visit=visit; inv.entered_by=request.user; inv.save(); visit.status='INVOICED'; visit.save(update_fields=['status']); fb,_=Feedback.objects.get_or_create(visit=visit)
+        inv=form.save(commit=False); inv.visit=visit; inv.entered_by=request.user
+        inv.amount=sum((item.service.base_price for item in visit.services.select_related('service')),start=0)
+        inv.save(); visit.status='INVOICED'; visit.save(update_fields=['status']); fb,_=Feedback.objects.get_or_create(visit=visit)
         return render(request,'operations/feedback_link.html',{'feedback':fb})
-    return render(request,'operations/form.html',{'form':form,'title':'Enter invoice'})
+    total=sum((item.service.base_price for item in visit.services.select_related('service')),start=0)
+    return render(request,'operations/form.html',{'form':form,'title':'Complete invoice','form_note':f'Service total: {total:.2f} (calculated automatically)'})
 
 @roles_required('EMPLOYEE')
 def employee_dashboard(request):
