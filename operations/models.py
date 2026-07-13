@@ -48,7 +48,11 @@ class VisitService(TimeStamped):
     def __str__(self): return f'{self.visit.customer.name} - {self.service.name}'
     @property
     def progress_percent(self):
-        total=self.tasks.count(); done=self.tasks.filter(status__in=['COMPLETED','SKIPPED']).count(); return int(done*100/total) if total else 0
+        total=getattr(self,'task_total',None)
+        done=getattr(self,'task_done',None)
+        if total is None:
+            total=self.tasks.count(); done=self.tasks.filter(status__in=['COMPLETED','SKIPPED']).count()
+        return int(done*100/total) if total else 0
 
 class VisitTask(TimeStamped):
     STATUS=[('PENDING','Pending'),('IN_PROGRESS','In progress'),('COMPLETED','Completed'),('SKIPPED','Skipped')]

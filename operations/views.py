@@ -4,7 +4,7 @@ from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Avg
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -13,6 +13,12 @@ from .forms import *
 from .decorators import roles_required
 
 def user_branch(user): return getattr(getattr(user,'profile',None),'branch',None)
+
+def with_progress(queryset):
+    return queryset.annotate(
+        task_total=Count('tasks',distinct=True),
+        task_done=Count('tasks',filter=Q(tasks__status__in=['COMPLETED','SKIPPED']),distinct=True),
+    )
 @login_required
 def dashboard(request):
     p=request.user.profile
@@ -60,7 +66,9 @@ def csv_import(request):
 @roles_required('MANAGER')
 def manager_dashboard(request):
     branch=user_branch(request.user)
-    visits=Visit.objects.filter(branch=branch).exclude(status__in=['CLOSED','CANCELLED']).select_related('customer').prefetch_related('services__service','services__employee')
+    services=with_progress(VisitService.objects.select_related('service','employee','chair'))
+    visits=(Visit.objects.filter(branch=branch).exclude(status__in=['CLOSED','CANCELLED'])
+            .select_related('customer').prefetch_related(Prefetch('services',queryset=services),'invoice'))
     return render(request,'operations/manager_dashboard.html',{'visits':visits})
 
 @roles_required('MANAGER')
@@ -77,7 +85,7 @@ def new_visit(request):
 
 @roles_required('MANAGER')
 def verify_service(request,pk):
-    vs=get_object_or_404(VisitService,pk=pk,visit__branch=user_branch(request.user))
+    vs=get_object_or_404(VisitService.objects.select_related('visit__customer','service').prefetch_related('tasks'),pk=pk,visit__branch=user_branch(request.user))
     form=VerifyForm(request.POST or None,initial={'manager_notes':vs.manager_notes})
     if request.method=='POST' and form.is_valid():
         if vs.tasks.filter(required=True).exclude(status='COMPLETED').exists():
@@ -97,7 +105,7 @@ def add_invoice(request,visit_id):
 
 @roles_required('EMPLOYEE')
 def employee_dashboard(request):
-    jobs=VisitService.objects.filter(employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED']).select_related('visit__customer','service','chair')
+    jobs=with_progress(VisitService.objects.filter(employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])).select_related('visit__customer','service','chair')
     return render(request,'operations/employee_dashboard.html',{'jobs':jobs})
 
 @roles_required('EMPLOYEE')
@@ -110,11 +118,17 @@ def execute_service(request,pk):
 @require_POST
 def task_action(request,pk,action):
     task=get_object_or_404(VisitTask,pk=pk,visit_service__employee=request.user); vs=task.visit_service
-    now=timezone.now(); note=request.POST.get('note','').strip(); reason=request.POST.get('skip_reason','').strip()
+    now=timezone.now(); note=request.POST.get('note','').strip()
+    reason_choice=request.POST.get('skip_reason_choice','').strip()
+    reason_other=request.POST.get('skip_reason_other','').strip()
+    reason=reason_other if reason_choice=='OTHER' else reason_choice
     if action=='start':
+        if task.status!='PENDING': return redirect('execute_service',pk=vs.pk)
         task.status='IN_PROGRESS'; task.started_at=task.started_at or now
         if vs.status=='ASSIGNED': vs.status='IN_PROGRESS'; vs.started_at=vs.started_at or now; vs.visit.status='IN_PROGRESS'; vs.visit.save(update_fields=['status'])
     elif action=='complete':
+        if task.status!='IN_PROGRESS':
+            messages.error(request,'Start the task before completing it.'); return redirect('execute_service',pk=vs.pk)
         task.status='COMPLETED'; task.started_at=task.started_at or now; task.completed_at=now
     elif action=='skip':
         if not task.can_skip: messages.error(request,'This task cannot be skipped.'); return redirect('execute_service',pk=vs.pk)
