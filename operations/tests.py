@@ -86,6 +86,14 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["ordered_services"], [self.service_b, self.service_a])
 
+    def test_manager_sees_searchable_single_service_picker(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse("new_visit"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="service-search"')
+        self.assertContains(response, 'id="add-service"')
+        self.assertContains(response, 'id="selected-services"')
+
     def test_admin_can_render_service_catalogue(self):
         admin = User.objects.create_superuser("admin", "admin@example.com", "test")
         self.client.force_login(admin)
