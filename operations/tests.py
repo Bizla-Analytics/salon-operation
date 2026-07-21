@@ -91,6 +91,7 @@ class CombinedServiceWorkflowTests(TestCase):
         response = self.client.get(reverse("new_visit"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="service-search"')
+        self.assertContains(response, 'list="service-options-list"')
         self.assertContains(response, 'id="add-service"')
         self.assertContains(response, 'id="selected-services"')
 

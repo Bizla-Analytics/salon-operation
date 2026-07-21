@@ -22,8 +22,7 @@
       <span class="selection-count" id="selection-count">0 selected</span>
     </div>
     <div class="searchable-service-picker">
-      <div><label for="service-search">Search service</label><input class="form-control" id="service-search" type="search" placeholder="Type a service name, code, or category" autocomplete="off"></div>
-      <div><label for="service-results">Matching services</label><select class="form-control" id="service-results"></select></div>
+      <div><label for="service-search">Search and select service</label><input class="form-control" id="service-search" type="search" list="service-options-list" placeholder="Type a service name, code, or category" autocomplete="off"><datalist id="service-options-list"></datalist></div>
       <button class="button primary" id="add-service" type="button">Add service</button>
     </div>
     <div class="hidden-service-inputs" aria-hidden="true">
@@ -40,14 +39,15 @@
 const orderInput=document.getElementById('id_service_order');
 const checks=[...document.querySelectorAll('input[name="services"]')];
 const list=document.getElementById('selected-services'),empty=document.getElementById('empty-order');
-const search=document.getElementById('service-search'),results=document.getElementById('service-results');
+const search=document.getElementById('service-search'),optionsList=document.getElementById('service-options-list');
 const addButton=document.getElementById('add-service'),count=document.getElementById('selection-count');
 const services=checks.map(check=>({id:check.value,label:check.closest('label').querySelector('.service-choice-label').innerText.trim(),check}));
 let order=(orderInput.value||'').split(',').filter(Boolean);
 checks.filter(check=>check.checked&&!order.includes(check.value)).forEach(check=>order.push(check.value));
-function renderResults(){const query=search.value.trim().toLowerCase();const available=services.filter(service=>!service.check.checked&&service.label.toLowerCase().includes(query));results.innerHTML='';available.forEach(service=>{const option=document.createElement('option');option.value=service.id;option.textContent=service.label;results.appendChild(option)});if(!available.length){const option=document.createElement('option');option.textContent='No matching services';option.value='';results.appendChild(option)}addButton.disabled=!available.length}
-function renderOrder(){order=order.filter(id=>services.some(service=>service.id===id&&service.check.checked));orderInput.value=order.join(',');list.innerHTML='';empty.hidden=order.length>0;count.textContent=`${order.length} selected`;order.forEach((id,index)=>{const service=services.find(item=>item.id===id),li=document.createElement('li');li.innerHTML=`<b>${index+1}</b><span>${service.label}</span><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" class="remove-service" aria-label="Remove service">×</button>`;li.querySelector('[data-move="up"]').disabled=index===0;li.querySelector('[data-move="down"]').disabled=index===order.length-1;li.querySelector('[data-move="up"]').onclick=()=>{[order[index-1],order[index]]=[order[index],order[index-1]];renderOrder()};li.querySelector('[data-move="down"]').onclick=()=>{[order[index],order[index+1]]=[order[index+1],order[index]];renderOrder()};li.querySelector('.remove-service').onclick=()=>{service.check.checked=false;order=order.filter(value=>value!==id);renderOrder();renderResults()};list.appendChild(li)})}
-addButton.addEventListener('click',()=>{const service=services.find(item=>item.id===results.value);if(!service)return;service.check.checked=true;if(!order.includes(service.id))order.push(service.id);search.value='';renderOrder();renderResults();search.focus()});
-search.addEventListener('input',renderResults);search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addButton.click()}});renderOrder();renderResults();
+function selectedSearchService(){const value=search.value.trim().toLowerCase();return services.find(service=>!service.check.checked&&service.label.toLowerCase()===value)}
+function renderOptions(){optionsList.innerHTML='';services.filter(service=>!service.check.checked).forEach(service=>{const option=document.createElement('option');option.value=service.label;optionsList.appendChild(option)});addButton.disabled=!selectedSearchService()}
+function renderOrder(){order=order.filter(id=>services.some(service=>service.id===id&&service.check.checked));orderInput.value=order.join(',');list.innerHTML='';empty.hidden=order.length>0;count.textContent=`${order.length} selected`;order.forEach((id,index)=>{const service=services.find(item=>item.id===id),li=document.createElement('li');li.innerHTML=`<b>${index+1}</b><span>${service.label}</span><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" class="remove-service" aria-label="Remove service">×</button>`;li.querySelector('[data-move="up"]').disabled=index===0;li.querySelector('[data-move="down"]').disabled=index===order.length-1;li.querySelector('[data-move="up"]').onclick=()=>{[order[index-1],order[index]]=[order[index],order[index-1]];renderOrder()};li.querySelector('[data-move="down"]').onclick=()=>{[order[index],order[index+1]]=[order[index+1],order[index]];renderOrder()};li.querySelector('.remove-service').onclick=()=>{service.check.checked=false;order=order.filter(value=>value!==id);renderOrder();renderOptions()};list.appendChild(li)})}
+addButton.addEventListener('click',()=>{const service=selectedSearchService();if(!service)return;service.check.checked=true;if(!order.includes(service.id))order.push(service.id);search.value='';renderOrder();renderOptions();search.focus()});
+search.addEventListener('input',renderOptions);search.addEventListener('change',renderOptions);search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addButton.click()}});renderOrder();renderOptions();
 </script>
 {% endblock %}
