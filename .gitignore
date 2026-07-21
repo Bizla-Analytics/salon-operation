@@ -22,6 +22,20 @@ staticfiles/
 *.log
 *.sqlite3
 
+# Business data, workbook imports, exports, and backups
+data/
+*.csv
+!sample_csv/*.csv
+*.xls
+*.xlsx
+*.xlsm
+*.ods
+*.parquet
+*.db
+*.db-journal
+backups/
+exports/
+
 # Editors and operating systems
 .vscode/
 .idea/

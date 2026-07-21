@@ -95,5 +95,60 @@ python manage.py check
 python manage.py makemigrations
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py collectstatic --noinput
+    python manage.py collectstatic --noinput
+
+## Docker and PostgreSQL
+
+Create a local `.env` from `.env.example`, then run:
+
+```powershell
+docker compose up --build -d
+docker compose ps
+```
+
+Open <http://localhost:8000/>. The database-aware health endpoint is
+<http://localhost:8000/health/>.
+
+The web container runs migrations and collects static files at startup. PostgreSQL
+data is kept in the named `postgres_data` volume. `docker compose down` preserves
+it; `docker compose down -v` permanently removes it.
+
+## SOP workbook import
+
+Business workbooks stay in the ignored `data/` directory and are never copied
+into the Docker image. To import or update the master data:
+
+```powershell
+docker compose exec -T web python manage.py import_sop_workbook
+```
+
+The import uses update-or-create behaviour for services, sub-services, tasks,
+inventory, equipment, and their mappings. Re-importing an updated workbook does
+not duplicate matching codes.
+
+## Combined service orders
+
+Managers can choose multiple services and arrange their execution order. The
+employee sees that order and cannot start a later service before the earlier one
+is complete. The generated execution plan always contains one consultation at
+the beginning and one sanitisation at the end of the combined visit.
+
+Admins can open **Service catalogue** from the application sidebar, choose a
+service, and inspect its sub-services, tasks, inventory quantities, active/passive
+time, equipment time, and utility time.
+
+## Git workflow
+
+The canonical remote is `https://github.com/Bizla-Analytics/salon-operation.git`.
+Develop changes on a feature branch and review them before merging into `main`:
+
+```powershell
+git switch -c feature/short-description
+git add .
+git commit -m "Describe the change"
+git push -u origin feature/short-description
+```
+
+Do not commit `.env`, workbooks, customer data, exports, backups, SQLite files,
+or database dumps.
 ```

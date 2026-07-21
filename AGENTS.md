@@ -1,35 +1,29 @@
 # Salon Operation project guidance
 
-This repository is a standalone Django project. Treat `/home/shahin/Salon_Operation`
-as the project root and do not read from or modify neighboring projects unless the
-user explicitly requests it.
+This repository is the Django application for salon SOP execution and timing analysis.
 
-## Environment
+## Runtime and layout
 
-- Use the project-local virtual environment at `.venv`.
-- Run Python with `.venv/bin/python` and pip with `.venv/bin/pip` when the shell is
-  not activated.
-- Dependencies are declared in `requirements.txt`.
-- Local development uses SQLite in `salon_db.sqlite3`.
-- Environment variable examples are documented in `.env.example`; never commit a
-  real `.env` or secrets.
+- `salonops/` contains Django project configuration.
+- `operations/` contains the domain models, workflows, views, forms, admin, commands, and tests.
+- `templates/` and `static/` contain the server-rendered interface.
+- Run the supported environment with `docker compose up --build -d`.
+- Run checks with `docker compose exec -T web python manage.py check` and tests with `docker compose exec -T web python manage.py test`.
+- PostgreSQL is the authoritative runtime database. Do not add SQLite files to Git.
 
-## Application structure
+## Domain invariants
 
-- `salonops/`: Django project configuration, URLs, WSGI, and ASGI.
-- `operations/`: application models, forms, views, URLs, admin, and migrations.
-- `templates/`: shared and feature templates.
-- `static/`: source static assets.
-- `sample_csv/`: example import data.
+- A service expands to ordered sub-services and operational tasks.
+- A combined visit can contain multiple ordered services.
+- The employee must complete services in `order_number` order.
+- Build exactly one consultation at the beginning and one sanitisation at the end of a combined visit.
+- Inventory requirements may vary by service; equipment requirements belong to operational tasks.
+- Never commit customer data, database dumps, workbooks, exports, `.env`, or credentials.
+- Treat `data/` workbooks as external import sources and use `import_sop_workbook` to update master data.
 
-## Verification
+## Completion checks
 
-After Python changes, run the relevant checks from the project root:
-
-```bash
-.venv/bin/python manage.py check
-.venv/bin/python manage.py test
-```
-
-Do not modify `salon_db.sqlite3`, generate migrations, seed data, or run destructive
-database commands unless the requested task requires it.
+- Generate and commit migrations for model changes.
+- Run Django checks and tests inside Docker.
+- Verify `/health/` and any changed role-specific page.
+- Preserve branch isolation and role authorization in all new views.

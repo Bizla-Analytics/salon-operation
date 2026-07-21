@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}New service order · SalonOps{% endblock %}
+{% block content %}
+<header class="page-head split"><div><span class="eyebrow">Manager</span><h1>{{ title }}</h1><p>Select services in the order the employee should perform them.</p></div><a href="{% url 'manager_dashboard' %}" class="button outline">Back</a></header>
+<form method="post" class="visit-builder">{% csrf_token %}{{ form.non_field_errors }}{{ form.service_order }}
+<section class="panel form-grid customer-fields"><h2>Customer and assignment</h2><div class="two-column"><p>{{ form.customer_name.label_tag }}{{ form.customer_name }}{{ form.customer_name.errors }}</p><p>{{ form.mobile.label_tag }}{{ form.mobile }}{{ form.mobile.errors }}</p><p>{{ form.employee.label_tag }}{{ form.employee }}{{ form.employee.errors }}</p><p>{{ form.chair.label_tag }}{{ form.chair }}{{ form.chair.errors }}</p></div></section>
+<section class="service-builder-grid"><div class="panel"><h2>1. Choose services</h2><p class="muted">Click each service in the required execution order.</p><div class="service-options">{% for choice in form.services %}<label>{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>{% endfor %}</div>{{ form.services.errors }}</div><div class="panel"><h2>2. Confirm order</h2><p class="muted">Consultation is added once at the start; sanitisation once at the end.</p><ol class="selected-services" id="selected-services"></ol><div class="empty-order" id="empty-order">No services selected yet.</div></div></section>
+<button class="button primary large" type="submit">Create service order</button></form>
+<script>
+const orderInput=document.getElementById('id_service_order'),checks=[...document.querySelectorAll('input[name="services"]')],list=document.getElementById('selected-services'),empty=document.getElementById('empty-order');let order=(orderInput.value||'').split(',').filter(Boolean);checks.filter(c=>c.checked&&!order.includes(c.value)).forEach(c=>order.push(c.value));
+function renderOrder(){order=order.filter(id=>checks.some(c=>c.value===id&&c.checked));orderInput.value=order.join(',');list.innerHTML='';empty.hidden=order.length>0;order.forEach((id,index)=>{const c=checks.find(x=>x.value===id),li=document.createElement('li');li.innerHTML=`<b>${index+1}</b><span>${c.parentElement.innerText.trim()}</span><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button>`;li.querySelector('[data-move="up"]').disabled=index===0;li.querySelector('[data-move="down"]').disabled=index===order.length-1;li.querySelector('[data-move="up"]').onclick=()=>{[order[index-1],order[index]]=[order[index],order[index-1]];renderOrder()};li.querySelector('[data-move="down"]').onclick=()=>{[order[index],order[index+1]]=[order[index+1],order[index]];renderOrder()};list.appendChild(li)})}
+checks.forEach(c=>c.addEventListener('change',()=>{if(c.checked&&!order.includes(c.value))order.push(c.value);if(!c.checked)order=order.filter(id=>id!==c.value);renderOrder()}));renderOrder();
+</script>
+{% endblock %}
+

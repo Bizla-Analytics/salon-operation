@@ -3,16 +3,24 @@ from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import render,redirect,get_object_or_404
+from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .models import *
 from .forms import *
 from .decorators import roles_required
+from .workflow import CONSULTATION_CODE, SANITISATION_CODE
 
 def user_branch(user): return getattr(getattr(user,'profile',None),'branch',None)
+
+def health(request):
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT 1')
+        cursor.fetchone()
+    return JsonResponse({'status':'ok','django':'connected','postgresql':'connected'})
 
 def with_progress(queryset):
     return queryset.annotate(
@@ -30,7 +38,32 @@ def logout_view(request): logout(request); return redirect('login')
 
 @roles_required('ADMIN')
 def admin_dashboard(request):
-    return render(request,'operations/admin_dashboard.html',{'branches':Branch.objects.count(),'users':User.objects.count(),'services':Service.objects.count(),'sop_tasks':SOPTask.objects.count()})
+    return render(request,'operations/admin_dashboard.html',{'branches':Branch.objects.count(),'users':User.objects.count(),'services':Service.objects.count(),'sop_tasks':OperationalTask.objects.count()})
+
+@roles_required('ADMIN')
+def service_catalog(request):
+    form=ServiceLookupForm(request.GET or None)
+    selected=None; sections=[]; totals={'labour':0,'passive':0,'equipment':0,'utility':0}
+    if form.is_valid():
+        selected=form.cleaned_data['service']
+        mapped=list(selected.service_details.filter(active=True,sub_service__active=True).select_related('sub_service').order_by('sequence','id'))
+        ordered=[]
+        consultation=SubService.objects.filter(code=CONSULTATION_CODE,active=True).first()
+        sanitisation=SubService.objects.filter(code=SANITISATION_CODE,active=True).first()
+        if consultation: ordered.append((consultation,True))
+        ordered.extend((detail.sub_service,detail.mandatory) for detail in mapped if detail.sub_service.code not in [CONSULTATION_CODE,SANITISATION_CODE])
+        if sanitisation: ordered.append((sanitisation,True))
+        for sub_service,mandatory in ordered:
+            task_rows=[]
+            for task in sub_service.tasks.filter(active=True).order_by('sequence','id'):
+                inventory=list(task.inventory_requirements.filter(active=True,service=selected).select_related('inventory'))
+                equipment=list(task.equipment_requirements.filter(active=True).select_related('equipment'))
+                totals['labour']+=task.active_labour_minutes; totals['passive']+=task.passive_time_minutes
+                totals['equipment']+=sum(item.equipment_usage_minutes for item in equipment)
+                totals['utility']+=sum(item.utility_minutes for item in equipment)
+                task_rows.append({'task':task,'inventory':inventory,'equipment':equipment})
+            sections.append({'sub_service':sub_service,'mandatory':mandatory,'tasks':task_rows})
+    return render(request,'operations/service_catalog.html',{'form':form,'selected':selected,'sections':sections,'totals':totals})
 
 @roles_required('ADMIN')
 def create_user(request):
@@ -79,9 +112,10 @@ def new_visit(request):
             mobile=form.cleaned_data['mobile']; customer=Customer.objects.filter(mobile=mobile).first() if mobile else None
             customer=customer or Customer.objects.create(name=form.cleaned_data['customer_name'],mobile=mobile)
             visit=Visit.objects.create(branch=branch,customer=customer,status='ASSIGNED',created_by=request.user)
-            VisitService.objects.create(visit=visit,service=form.cleaned_data['service'],employee=form.cleaned_data['employee'],chair=form.cleaned_data['chair'],assigned_by=request.user)
-        messages.success(request,'Service assigned successfully.'); return redirect('manager_dashboard')
-    return render(request,'operations/form.html',{'form':form,'title':'Create visit and assign service'})
+            for order_number,service in enumerate(form.cleaned_data['ordered_services'],start=1):
+                VisitService.objects.create(visit=visit,service=service,order_number=order_number,employee=form.cleaned_data['employee'],chair=form.cleaned_data['chair'],assigned_by=request.user)
+        messages.success(request,f"{len(form.cleaned_data['ordered_services'])} service(s) assigned in execution order."); return redirect('manager_dashboard')
+    return render(request,'operations/visit_form.html',{'form':form,'title':'Create visit and assign services'})
 
 @roles_required('MANAGER')
 def verify_service(request,pk):
@@ -98,6 +132,9 @@ def verify_service(request,pk):
 @roles_required('MANAGER')
 def add_invoice(request,visit_id):
     visit=get_object_or_404(Visit,pk=visit_id,branch=user_branch(request.user)); form=InvoiceForm(request.POST or None)
+    if visit.services.exclude(status='VERIFIED').exists():
+        messages.error(request,'Verify every service in the order before creating the invoice.')
+        return redirect('manager_dashboard')
     if request.method=='POST' and form.is_valid():
         inv=form.save(commit=False); inv.visit=visit; inv.entered_by=request.user
         inv.amount=sum((item.service.base_price for item in visit.services.select_related('service')),start=0)
@@ -108,12 +145,15 @@ def add_invoice(request,visit_id):
 
 @roles_required('EMPLOYEE')
 def employee_dashboard(request):
-    jobs=with_progress(VisitService.objects.filter(employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])).select_related('visit__customer','service','chair')
+    jobs=with_progress(VisitService.objects.filter(employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])).select_related('visit__customer','service','chair').order_by('visit__created_at','order_number')
     return render(request,'operations/employee_dashboard.html',{'jobs':jobs})
 
 @roles_required('EMPLOYEE')
 def execute_service(request,pk):
     vs=get_object_or_404(VisitService,pk=pk,employee=request.user)
+    if vs.visit.services.filter(order_number__lt=vs.order_number).exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
+        messages.error(request,'Complete the earlier service in this visit first.')
+        return redirect('employee_dashboard')
     current=vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).first()
     return render(request,'operations/execute.html',{'vs':vs,'current':current,'tasks':vs.tasks.all()})
 
@@ -121,6 +161,8 @@ def execute_service(request,pk):
 @require_POST
 def task_action(request,pk,action):
     task=get_object_or_404(VisitTask,pk=pk,visit_service__employee=request.user); vs=task.visit_service
+    if vs.visit.services.filter(order_number__lt=vs.order_number).exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
+        messages.error(request,'Complete the earlier service in this visit first.'); return redirect('employee_dashboard')
     now=timezone.now(); note=request.POST.get('note','').strip()
     reason_choice=request.POST.get('skip_reason_choice','').strip()
     reason_other=request.POST.get('skip_reason_other','').strip()
@@ -146,7 +188,10 @@ def finish_service(request,pk):
     vs=get_object_or_404(VisitService,pk=pk,employee=request.user)
     if vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).exists(): messages.error(request,'Complete or skip the remaining tasks first.')
     else:
-        vs.status='EMPLOYEE_DONE'; vs.employee_completed_at=timezone.now(); vs.employee_notes=request.POST.get('employee_notes',''); vs.save(); vs.visit.status='EMPLOYEE_DONE'; vs.visit.save(update_fields=['status']); messages.success(request,'Submitted to manager.')
+        vs.status='EMPLOYEE_DONE'; vs.employee_completed_at=timezone.now(); vs.employee_notes=request.POST.get('employee_notes',''); vs.save()
+        if not vs.visit.services.exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
+            vs.visit.status='EMPLOYEE_DONE'; vs.visit.save(update_fields=['status'])
+        messages.success(request,'Submitted to manager.')
     return redirect('employee_dashboard')
 
 def feedback_form(request,token):
