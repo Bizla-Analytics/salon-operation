@@ -16,7 +16,7 @@ This repository is the Django application for salon SOP execution and timing ana
 - A service expands to ordered sub-services and operational tasks.
 - A combined visit can contain multiple ordered services.
 - The employee must complete services in `order_number` order.
-- Build exactly one consultation at the beginning and one sanitisation at the end of a combined visit.
+- Build exactly one sanitisation at the beginning and one Consultation at the Second of a combined visit.
 - Inventory requirements may vary by service; equipment requirements belong to operational tasks.
 - Never commit customer data, database dumps, workbooks, exports, `.env`, or credentials.
 - Treat `data/` workbooks as external import sources and use `import_sop_workbook` to update master data.

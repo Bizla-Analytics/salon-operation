@@ -12,7 +12,8 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY --chown=django:django . .
-RUN mkdir -p /app/staticfiles && \
+RUN sed -i 's/\r$//' /app/entrypoint.sh && \
+    mkdir -p /app/staticfiles && \
     chown django:django /app/staticfiles && \
     chmod +x /app/entrypoint.sh
 

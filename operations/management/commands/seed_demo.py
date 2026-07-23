@@ -17,6 +17,12 @@ class Command(BaseCommand):
         (50,'AFTER','HYGIENE','Clean tools and workstation',True,False)]
         for seq,phase,typ,title,req,skip in tasks: SOPTask.objects.update_or_create(service=s,sequence=seq,defaults={'phase':phase,'task_type':typ,'title':title,'required':req,'can_skip':skip,'skip_reason_required':skip})
         SOPTask.objects.filter(service=s).exclude(sequence__in=[t[0] for t in tasks]).delete()
-        qs=['How satisfied are you with the final result?','How professionally did the employee handle your service?','How comfortable and clean was the experience?','How well did the employee understand your requirement?','How likely are you to visit us again?']
-        for i,q in enumerate(qs,1): FeedbackQuestion.objects.get_or_create(text=q,defaults={'sequence':i*10})
+        qs=[
+            'അന്തിമ ഫലത്തിൽ നിങ്ങൾ എത്രത്തോളം തൃപ്തനാണ്?\nHow satisfied are you with the final result?',
+            'ഞങ്ങളുടെ ജീവനക്കാരൻ എത്രത്തോളം പ്രൊഫഷണലായാണ് സേവനം നൽകിയത്?\nHow professionally did the employee handle your service?',
+            'ഞങ്ങളുടെ കേന്ദ്രത്തിലെ ശുചിത്വവും അന്തരീക്ഷവും നിങ്ങൾക്ക് എത്രത്തോളം സുഖകരമായിരുന്നു?\nHow comfortable and clean was your experience?',
+            'നിങ്ങളുടെ ആവശ്യങ്ങൾ ഞങ്ങളുടെ ജീവനക്കാരൻ എത്രത്തോളം കൃത്യമായി മനസ്സിലാക്കി?\nHow well did the employee understand your requirements?',
+            'വീണ്ടും ഞങ്ങളെ സന്ദർശിക്കാൻ നിങ്ങൾക്ക് എത്രത്തോളം സാധ്യതയുണ്ട്?\nHow likely are you to visit us again?',
+        ]
+        for i,q in enumerate(qs,1): FeedbackQuestion.objects.update_or_create(sequence=i*10,defaults={'text':q,'active':True})
         self.stdout.write(self.style.SUCCESS('Demo created. Password for demo users: Admin@123'))

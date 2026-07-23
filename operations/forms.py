@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from .models import Branch, Chair, Invoice, Profile, Service
 
@@ -46,10 +47,32 @@ class VisitCreateForm(BootstrapMixin, forms.Form):
             ordered_ids = [int(value) for value in raw_order.split(",") if value]
         except ValueError:
             ordered_ids = []
-        if set(ordered_ids) != set(selected_by_id):
+        if len(ordered_ids) != len(set(ordered_ids)) or set(ordered_ids) != set(selected_by_id):
             ordered_ids = [service.pk for service in selected]
         cleaned["ordered_services"] = [selected_by_id[service_id] for service_id in ordered_ids]
         return cleaned
+
+
+class VisitEditForm(VisitCreateForm):
+    customer_name = None
+    mobile = None
+
+    def __init__(self, *args, visit=None, branch=None, **kwargs):
+        self.visit = visit
+        if visit and not args and "initial" not in kwargs:
+            visit_services = list(visit.services.order_by("order_number", "id"))
+            kwargs["initial"] = {
+                "services": [item.service_id for item in visit_services],
+                "service_order": ",".join(str(item.service_id) for item in visit_services),
+                "employee": visit_services[0].employee_id if visit_services else None,
+                "chair": visit_services[0].chair_id if visit_services else None,
+            }
+        super().__init__(*args, branch=branch, **kwargs)
+        if visit:
+            current_service_ids = visit.services.values_list("service_id", flat=True)
+            self.fields["services"].queryset = Service.objects.filter(
+                Q(active=True) | Q(pk__in=current_service_ids)
+            ).distinct()
 
 
 class ServiceLookupForm(BootstrapMixin, forms.Form):
@@ -68,7 +91,7 @@ class VerifyForm(BootstrapMixin, forms.Form):
 class InvoiceForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         model = Invoice
-        fields = ["invoice_number", "payment_method"]
+        fields = ["invoice_number"]
 
 
 class UserCreateForm(BootstrapMixin, forms.Form):

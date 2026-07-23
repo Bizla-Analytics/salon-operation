@@ -9,7 +9,7 @@ def _task_type(sub_service_code):
     if sub_service_code == CONSULTATION_CODE:
         return "CONSULT", "BEFORE"
     if sub_service_code == SANITISATION_CODE:
-        return "HYGIENE", "AFTER"
+        return "HYGIENE", "BEFORE"
     return "SERVICE", "DURING"
 
 
@@ -41,8 +41,8 @@ def _append_sub_service_tasks(rows, visit_service, sub_service, start_sequence, 
 def build_visit_tasks(visit):
     """Build one ordered execution plan for every service in a visit.
 
-    Consultation is placed only on the first service and sanitisation only on
-    the last service, even when each selected service maps those sub-services.
+    Sanitisation and consultation are placed, in that order, only on the first
+    service, even when every selected service maps those sub-services.
     """
     visit_services = list(visit.services.select_related("service").order_by("order_number", "id"))
     if not visit_services:
@@ -57,9 +57,13 @@ def build_visit_tasks(visit):
 
     for index, visit_service in enumerate(visit_services):
         sequence = 10
-        if index == 0 and consultation:
-            sequence = _append_sub_service_tasks(rows, visit_service, consultation, sequence)
+        if index == 0:
+            if sanitisation:
+                sequence = _append_sub_service_tasks(rows, visit_service, sanitisation, sequence)
+            if consultation:
+                sequence = _append_sub_service_tasks(rows, visit_service, consultation, sequence)
 
+        procedure_row_count = len(rows)
         details = (
             visit_service.service.service_details.filter(active=True, sub_service__active=True)
             .exclude(sub_service__code__in=[CONSULTATION_CODE, SANITISATION_CODE])
@@ -76,17 +80,16 @@ def build_visit_tasks(visit):
                 required=detail.mandatory,
             )
 
-        if index == len(visit_services) - 1 and sanitisation:
-            sequence = _append_sub_service_tasks(rows, visit_service, sanitisation, sequence)
-
         # Existing CSV/demo services continue to work until workbook data is imported.
-        if not any(row.visit_service_id == visit_service.id for row in rows):
-            for legacy in visit_service.service.sop_tasks.filter(active=True):
+        if len(rows) == procedure_row_count:
+            for legacy in visit_service.service.sop_tasks.filter(active=True).exclude(
+                task_type__in=["CONSULT", "HYGIENE"]
+            ):
                 rows.append(
                     VisitTask(
                         visit_service=visit_service,
                         source_task=legacy,
-                        sequence=legacy.sequence,
+                        sequence=sequence,
                         phase=legacy.phase,
                         task_type=legacy.task_type,
                         title=legacy.title,
@@ -96,6 +99,7 @@ def build_visit_tasks(visit):
                         skip_reason_required=legacy.skip_reason_required,
                     )
                 )
+                sequence += 10
 
     VisitTask.objects.bulk_create(rows)
 

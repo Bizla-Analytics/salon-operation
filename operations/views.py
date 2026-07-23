@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 from .models import *
 from .forms import *
 from .decorators import roles_required
-from .workflow import CONSULTATION_CODE, SANITISATION_CODE
+from .workflow import CONSULTATION_CODE, SANITISATION_CODE, build_visit_tasks
 
 def user_branch(user): return getattr(getattr(user,'profile',None),'branch',None)
 
@@ -50,9 +50,9 @@ def service_catalog(request):
         ordered=[]
         consultation=SubService.objects.filter(code=CONSULTATION_CODE,active=True).first()
         sanitisation=SubService.objects.filter(code=SANITISATION_CODE,active=True).first()
+        if sanitisation: ordered.append((sanitisation,True))
         if consultation: ordered.append((consultation,True))
         ordered.extend((detail.sub_service,detail.mandatory) for detail in mapped if detail.sub_service.code not in [CONSULTATION_CODE,SANITISATION_CODE])
-        if sanitisation: ordered.append((sanitisation,True))
         for sub_service,mandatory in ordered:
             task_rows=[]
             for task in sub_service.tasks.filter(active=True).order_by('sequence','id'):
@@ -118,6 +118,77 @@ def new_visit(request):
     return render(request,'operations/visit_form.html',{'form':form,'title':'Create visit and assign services'})
 
 @roles_required('MANAGER')
+def edit_visit_services(request, visit_id):
+    branch = user_branch(request.user)
+    visit = get_object_or_404(Visit, pk=visit_id, branch=branch)
+    editable = (
+        visit.status == "ASSIGNED"
+        and not visit.services.exclude(status="ASSIGNED").exists()
+        and not VisitTask.objects.filter(visit_service__visit=visit).exclude(status="PENDING").exists()
+    )
+    if not editable:
+        messages.error(request, "Service order and assignment can only be changed before work starts.")
+        return redirect("manager_dashboard")
+
+    form = VisitEditForm(request.POST or None, visit=visit, branch=branch)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            current = {
+                item.service_id: item
+                for item in visit.services.select_for_update().order_by("order_number", "id")
+            }
+            ordered_services = form.cleaned_data["ordered_services"]
+            selected_ids = {service.pk for service in ordered_services}
+
+            # Avoid temporary collisions with the per-visit order-number constraint.
+            for offset, item in enumerate(current.values(), start=1):
+                VisitService.objects.filter(pk=item.pk).update(order_number=1000000 + offset)
+
+            visit.services.exclude(service_id__in=selected_ids).delete()
+            for order_number, service in enumerate(ordered_services, start=1):
+                item = current.get(service.pk)
+                if item and item.pk:
+                    item.order_number = order_number
+                    item.employee = form.cleaned_data["employee"]
+                    item.chair = form.cleaned_data["chair"]
+                    item.assigned_by = request.user
+                    item.assigned_at = timezone.now()
+                    item.save(
+                        update_fields=[
+                            "order_number",
+                            "employee",
+                            "chair",
+                            "assigned_by",
+                            "assigned_at",
+                            "updated_at",
+                        ]
+                    )
+                else:
+                    VisitService.objects.create(
+                        visit=visit,
+                        service=service,
+                        order_number=order_number,
+                        employee=form.cleaned_data["employee"],
+                        chair=form.cleaned_data["chair"],
+                        assigned_by=request.user,
+                    )
+            build_visit_tasks(visit)
+        messages.success(request, "Service order and assignment updated.")
+        return redirect("manager_dashboard")
+
+    return render(
+        request,
+        "operations/visit_form.html",
+        {
+            "form": form,
+            "title": f"Edit service order for {visit.customer.name}",
+            "visit": visit,
+            "is_edit": True,
+        },
+    )
+
+
+@roles_required('MANAGER')
 def verify_service(request,pk):
     vs=get_object_or_404(VisitService.objects.select_related('visit__customer','service').prefetch_related('tasks'),pk=pk,visit__branch=user_branch(request.user))
     form=VerifyForm(request.POST or None,initial={'manager_notes':vs.manager_notes})
@@ -131,7 +202,12 @@ def verify_service(request,pk):
 
 @roles_required('MANAGER')
 def add_invoice(request,visit_id):
-    visit=get_object_or_404(Visit,pk=visit_id,branch=user_branch(request.user)); form=InvoiceForm(request.POST or None)
+    visit=get_object_or_404(Visit,pk=visit_id,branch=user_branch(request.user))
+    if hasattr(visit, "invoice"):
+        feedback, _ = Feedback.objects.get_or_create(visit=visit)
+        messages.info(request, "This combined visit already has one invoice and feedback request.")
+        return render(request, 'operations/feedback_link.html', {'feedback': feedback})
+    form=InvoiceForm(request.POST or None)
     if visit.services.exclude(status='VERIFIED').exists():
         messages.error(request,'Verify every service in the order before creating the invoice.')
         return redirect('manager_dashboard')

@@ -7,7 +7,7 @@
 </header>
 <form method="post" class="visit-builder">
   {% csrf_token %}{{ form.non_field_errors }}{{ form.service_order }}
-  <section class="panel form-grid customer-fields">
+  {% if not is_edit %}<section class="panel form-grid customer-fields">
     <h2>Customer and assignment</h2>
     <div class="two-column">
       <p>{{ form.customer_name.label_tag }}{{ form.customer_name }}{{ form.customer_name.errors }}</p>
@@ -15,15 +15,23 @@
       <p>{{ form.employee.label_tag }}{{ form.employee }}{{ form.employee.errors }}</p>
       <p>{{ form.chair.label_tag }}{{ form.chair }}{{ form.chair.errors }}</p>
     </div>
-  </section>
+  </section>{% else %}<section class="panel form-grid customer-fields">
+    <h2>Customer: {{ visit.customer.name }}</h2>
+    <p class="muted">Changing the assignment below applies to every service in this visit.</p>
+    <div class="two-column">
+      <p>{{ form.employee.label_tag }}{{ form.employee }}{{ form.employee.errors }}</p>
+      <p>{{ form.chair.label_tag }}{{ form.chair }}{{ form.chair.errors }}</p>
+    </div>
+  </section>{% endif %}
   <section class="panel service-order-builder">
     <div class="builder-heading">
-      <div><h2>Services and execution order</h2><p class="muted">Search and add one service at a time. Consultation is added once at the start and sanitisation once at the end.</p></div>
+      <div><h2>Services and execution order</h2><p class="muted">Sanitisation is added once at the beginning, followed by one consultation. Service procedures then follow this order.</p></div>
       <span class="selection-count" id="selection-count">0 selected</span>
     </div>
     <div class="searchable-service-picker">
       <div><label for="service-search">Search and select service</label><input class="form-control" id="service-search" type="search" list="service-options-list" placeholder="Type a service name, code, or category" autocomplete="off"><datalist id="service-options-list"></datalist></div>
-      <button class="button primary" id="add-service" type="button">Add service</button>
+      <button class="button outline" id="add-service-first" type="button">Add first</button>
+      <button class="button primary" id="add-service" type="button">Add last</button>
     </div>
     <div class="hidden-service-inputs" aria-hidden="true">
       {% for choice in form.services %}<label>{{ choice.tag }}<span class="service-choice-label">{{ choice.choice_label }}</span></label>{% endfor %}
@@ -33,21 +41,22 @@
     <ol class="selected-services" id="selected-services"></ol>
     <div class="empty-order" id="empty-order">Search above and add the customer’s first service.</div>
   </section>
-  <button class="button primary large" type="submit">Create service order</button>
+  <button class="button primary large" type="submit">{% if is_edit %}Save order and assignment{% else %}Create service order{% endif %}</button>
 </form>
 <script>
 const orderInput=document.getElementById('id_service_order');
 const checks=[...document.querySelectorAll('input[name="services"]')];
 const list=document.getElementById('selected-services'),empty=document.getElementById('empty-order');
 const search=document.getElementById('service-search'),optionsList=document.getElementById('service-options-list');
-const addButton=document.getElementById('add-service'),count=document.getElementById('selection-count');
+const addButton=document.getElementById('add-service'),addFirstButton=document.getElementById('add-service-first'),count=document.getElementById('selection-count');
 const services=checks.map(check=>({id:check.value,label:check.closest('label').querySelector('.service-choice-label').innerText.trim(),check}));
 let order=(orderInput.value||'').split(',').filter(Boolean);
 checks.filter(check=>check.checked&&!order.includes(check.value)).forEach(check=>order.push(check.value));
 function selectedSearchService(){const value=search.value.trim().toLowerCase();return services.find(service=>!service.check.checked&&service.label.toLowerCase()===value)}
-function renderOptions(){optionsList.innerHTML='';services.filter(service=>!service.check.checked).forEach(service=>{const option=document.createElement('option');option.value=service.label;optionsList.appendChild(option)});addButton.disabled=!selectedSearchService()}
+function renderOptions(){optionsList.innerHTML='';services.filter(service=>!service.check.checked).forEach(service=>{const option=document.createElement('option');option.value=service.label;optionsList.appendChild(option)});const disabled=!selectedSearchService();addButton.disabled=disabled;addFirstButton.disabled=disabled}
 function renderOrder(){order=order.filter(id=>services.some(service=>service.id===id&&service.check.checked));orderInput.value=order.join(',');list.innerHTML='';empty.hidden=order.length>0;count.textContent=`${order.length} selected`;order.forEach((id,index)=>{const service=services.find(item=>item.id===id),li=document.createElement('li');li.innerHTML=`<b>${index+1}</b><span>${service.label}</span><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" class="remove-service" aria-label="Remove service">×</button>`;li.querySelector('[data-move="up"]').disabled=index===0;li.querySelector('[data-move="down"]').disabled=index===order.length-1;li.querySelector('[data-move="up"]').onclick=()=>{[order[index-1],order[index]]=[order[index],order[index-1]];renderOrder()};li.querySelector('[data-move="down"]').onclick=()=>{[order[index],order[index+1]]=[order[index+1],order[index]];renderOrder()};li.querySelector('.remove-service').onclick=()=>{service.check.checked=false;order=order.filter(value=>value!==id);renderOrder();renderOptions()};list.appendChild(li)})}
-addButton.addEventListener('click',()=>{const service=selectedSearchService();if(!service)return;service.check.checked=true;if(!order.includes(service.id))order.push(service.id);search.value='';renderOrder();renderOptions();search.focus()});
+function addService(position){const service=selectedSearchService();if(!service)return;service.check.checked=true;if(!order.includes(service.id)){if(position==='first')order.unshift(service.id);else order.push(service.id)}search.value='';renderOrder();renderOptions();search.focus()}
+addButton.addEventListener('click',()=>addService('last'));addFirstButton.addEventListener('click',()=>addService('first'));
 search.addEventListener('input',renderOptions);search.addEventListener('change',renderOptions);search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addButton.click()}});renderOrder();renderOptions();
 </script>
 {% endblock %}

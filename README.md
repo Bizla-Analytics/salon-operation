@@ -130,8 +130,10 @@ not duplicate matching codes.
 
 Managers can choose multiple services and arrange their execution order. The
 employee sees that order and cannot start a later service before the earlier one
-is complete. The generated execution plan always contains one consultation at
-the beginning and one sanitisation at the end of the combined visit.
+is complete. The generated execution plan always starts with one sanitisation,
+then one consultation, followed by procedures in the manager-defined service
+order. Before work starts, the manager can add services at the beginning or end,
+reorder them, or change the employee and chair assignment.
 
 Admins can open **Service catalogue** from the application sidebar, choose a
 service, and inspect its sub-services, tasks, inventory quantities, active/passive

@@ -10,6 +10,8 @@ Business rules:
 
 - Managers may combine multiple services for one customer and define their execution order.
 - Employees follow that order.
-- Consultation (`SUB001`) occurs once, first.
-- Sanitisation (`SUB025`) occurs once, last.
+- Sanitisation (`SUB025`) occurs once at the beginning of a visit.
+- Consultation (`SUB001`) occurs once immediately after sanitisation.
+- Managers may reorder, add, remove, or reassign services before work starts.
+- A combined visit produces one invoice and one feedback request.
 - Workbook and customer data stay outside Git.
