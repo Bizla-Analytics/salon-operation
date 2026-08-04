@@ -59,7 +59,14 @@ class VisitEditForm(VisitCreateForm):
 
     def __init__(self, *args, visit=None, branch=None, **kwargs):
         self.visit = visit
-        if visit and not args and "initial" not in kwargs:
+        # Views commonly instantiate forms with ``request.POST or None``.  On a
+        # GET that still gives us one positional argument (None), so checking
+        # only ``not args`` leaves the edit form empty and makes a later submit
+        # look like the manager intentionally removed the previous services.
+        data = args[0] if args else kwargs.get("data")
+        files = args[1] if len(args) > 1 else kwargs.get("files")
+        is_bound = data is not None or files is not None
+        if visit and not is_bound and "initial" not in kwargs:
             visit_services = list(visit.services.order_by("order_number", "id"))
             kwargs["initial"] = {
                 "services": [item.service_id for item in visit_services],

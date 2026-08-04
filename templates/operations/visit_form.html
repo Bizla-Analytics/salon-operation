@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}New service order · SalonOps{% endblock %}
 {% block content %}
 <header class="page-head split">
@@ -29,7 +30,16 @@
       <span class="selection-count" id="selection-count">0 selected</span>
     </div>
     <div class="searchable-service-picker">
-      <div><label for="service-search">Search and select service</label><input class="form-control" id="service-search" type="search" list="service-options-list" placeholder="Type a service name, code, or category" autocomplete="off"><datalist id="service-options-list"></datalist></div>
+      <div class="service-search-fields">
+        <label for="service-search">Search service</label>
+        <input class="form-control" id="service-search" type="search" placeholder="Type a service name, code, or category" autocomplete="off">
+        <label for="service-select">Select service</label>
+        <select class="form-control" id="service-select">
+          <option value="">Choose a service</option>
+          {% for service in form.services.field.queryset %}<option value="{{ service.pk }}">{{ service }}</option>{% endfor %}
+        </select>
+        <small class="muted">This standard dropdown also works on older company phones. Type above to shorten the list.</small>
+      </div>
       <button class="button outline" id="add-service-first" type="button">Add first</button>
       <button class="button primary" id="add-service" type="button">Add last</button>
     </div>
@@ -43,20 +53,5 @@
   </section>
   <button class="button primary large" type="submit">{% if is_edit %}Save order and assignment{% else %}Create service order{% endif %}</button>
 </form>
-<script>
-const orderInput=document.getElementById('id_service_order');
-const checks=[...document.querySelectorAll('input[name="services"]')];
-const list=document.getElementById('selected-services'),empty=document.getElementById('empty-order');
-const search=document.getElementById('service-search'),optionsList=document.getElementById('service-options-list');
-const addButton=document.getElementById('add-service'),addFirstButton=document.getElementById('add-service-first'),count=document.getElementById('selection-count');
-const services=checks.map(check=>({id:check.value,label:check.closest('label').querySelector('.service-choice-label').innerText.trim(),check}));
-let order=(orderInput.value||'').split(',').filter(Boolean);
-checks.filter(check=>check.checked&&!order.includes(check.value)).forEach(check=>order.push(check.value));
-function selectedSearchService(){const value=search.value.trim().toLowerCase();return services.find(service=>!service.check.checked&&service.label.toLowerCase()===value)}
-function renderOptions(){optionsList.innerHTML='';services.filter(service=>!service.check.checked).forEach(service=>{const option=document.createElement('option');option.value=service.label;optionsList.appendChild(option)});const disabled=!selectedSearchService();addButton.disabled=disabled;addFirstButton.disabled=disabled}
-function renderOrder(){order=order.filter(id=>services.some(service=>service.id===id&&service.check.checked));orderInput.value=order.join(',');list.innerHTML='';empty.hidden=order.length>0;count.textContent=`${order.length} selected`;order.forEach((id,index)=>{const service=services.find(item=>item.id===id),li=document.createElement('li');li.innerHTML=`<b>${index+1}</b><span>${service.label}</span><button type="button" data-move="up" aria-label="Move up">↑</button><button type="button" data-move="down" aria-label="Move down">↓</button><button type="button" class="remove-service" aria-label="Remove service">×</button>`;li.querySelector('[data-move="up"]').disabled=index===0;li.querySelector('[data-move="down"]').disabled=index===order.length-1;li.querySelector('[data-move="up"]').onclick=()=>{[order[index-1],order[index]]=[order[index],order[index-1]];renderOrder()};li.querySelector('[data-move="down"]').onclick=()=>{[order[index],order[index+1]]=[order[index+1],order[index]];renderOrder()};li.querySelector('.remove-service').onclick=()=>{service.check.checked=false;order=order.filter(value=>value!==id);renderOrder();renderOptions()};list.appendChild(li)})}
-function addService(position){const service=selectedSearchService();if(!service)return;service.check.checked=true;if(!order.includes(service.id)){if(position==='first')order.unshift(service.id);else order.push(service.id)}search.value='';renderOrder();renderOptions();search.focus()}
-addButton.addEventListener('click',()=>addService('last'));addFirstButton.addEventListener('click',()=>addService('first'));
-search.addEventListener('input',renderOptions);search.addEventListener('change',renderOptions);search.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addButton.click()}});renderOrder();renderOptions();
-</script>
+<script src="{% static 'js/visit_form.js' %}"></script>
 {% endblock %}

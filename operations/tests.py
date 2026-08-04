@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from .forms import InvoiceForm, VisitCreateForm
+from .forms import InvoiceForm, VisitCreateForm, VisitEditForm
 from .models import (
     Branch,
     Customer,
@@ -95,15 +95,18 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["ordered_services"], [self.service_b, self.service_a])
 
-    def test_manager_sees_searchable_single_service_picker(self):
+    def test_manager_sees_old_phone_compatible_service_picker(self):
         self.client.force_login(self.manager)
         response = self.client.get(reverse("new_visit"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="service-search"')
-        self.assertContains(response, 'list="service-options-list"')
+        self.assertContains(response, 'id="service-select"')
+        self.assertNotContains(response, "<datalist")
+        self.assertContains(response, "works on older company phones")
         self.assertContains(response, 'id="add-service-first"')
         self.assertContains(response, 'id="add-service"')
         self.assertContains(response, 'id="selected-services"')
+        self.assertContains(response, 'class="mobile-signout"')
 
     def test_manager_can_reorder_services_and_rebuild_pending_plan(self):
         visit, first, second = self.create_visit()
@@ -130,6 +133,80 @@ class CombinedServiceWorkflowTests(TestCase):
             list(first.tasks.order_by("sequence").values_list("title", flat=True)),
             ["First procedure"],
         )
+
+        dashboard = self.client.get(reverse("manager_dashboard"))
+        displayed_visit = next(item for item in dashboard.context["visits"] if item.pk == visit.pk)
+        displayed_services = list(displayed_visit.services.all())
+        self.assertEqual([item.pk for item in displayed_services], [second.pk, first.pk])
+        self.assertEqual([item.order_number for item in displayed_services], [1, 2])
+
+    def test_visit_edit_form_prefills_existing_assignment_and_order(self):
+        visit, _, _ = self.create_visit()
+
+        # This is how the view constructs the form on a GET request.
+        form = VisitEditForm(None, visit=visit, branch=self.branch)
+
+        self.assertEqual(
+            [int(value) for value in form["services"].value()],
+            [self.service_a.pk, self.service_b.pk],
+        )
+        self.assertEqual(
+            form["service_order"].value(),
+            f"{self.service_a.pk},{self.service_b.pk}",
+        )
+        self.assertEqual(form["employee"].value(), self.employee.pk)
+
+    def test_edit_page_contains_previous_services_in_execution_order(self):
+        visit, _, _ = self.create_visit()
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertEqual(
+            [int(value) for value in form["services"].value()],
+            [self.service_a.pk, self.service_b.pk],
+        )
+        self.assertEqual(
+            form["service_order"].value(),
+            f"{self.service_a.pk},{self.service_b.pk}",
+        )
+
+    def test_reassignment_preserves_existing_services_and_order(self):
+        visit, first, second = self.create_visit()
+        replacement = User.objects.create_user("replacement", password="test")
+        replacement.profile.role = "EMPLOYEE"
+        replacement.profile.branch = self.branch
+        replacement.profile.save()
+        original_ids = [first.pk, second.pk]
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            reverse("edit_visit_services", args=[visit.pk]),
+            {
+                "services": [self.service_a.pk, self.service_b.pk],
+                "service_order": f"{self.service_a.pk},{self.service_b.pk}",
+                "employee": replacement.pk,
+                "chair": "",
+            },
+        )
+
+        self.assertRedirects(response, reverse("manager_dashboard"))
+        assignments = list(visit.services.order_by("order_number", "id"))
+        self.assertEqual([item.pk for item in assignments], original_ids)
+        self.assertEqual(
+            [item.service_id for item in assignments],
+            [self.service_a.pk, self.service_b.pk],
+        )
+        self.assertEqual([item.order_number for item in assignments], [1, 2])
+        self.assertTrue(all(item.employee_id == replacement.pk for item in assignments))
+
+        self.client.force_login(replacement)
+        response = self.client.get(reverse("employee_dashboard"))
+        jobs = list(response.context["jobs"])
+        self.assertEqual([job.pk for job in jobs], original_ids)
+        self.assertEqual([job.order_number for job in jobs], [1, 2])
 
     def test_manager_cannot_reorder_after_work_starts(self):
         visit, first, _ = self.create_visit()

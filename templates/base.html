@@ -28,7 +28,7 @@
     <div class="sidebar-user"><small>Signed in as</small><strong>{{ user.first_name|default:user.username }}</strong><a href="{% url 'logout' %}">Sign out</a></div>
   </aside>
   <button class="sidebar-backdrop" type="button" aria-label="Close menu" data-menu-close></button>
-  <div class="workspace"><header class="mobile-appbar"><button type="button" class="menu-toggle" aria-label="Open menu" aria-controls="app-sidebar" aria-expanded="false" data-menu-open>&#9776;</button><a class="brand" href="{% url 'dashboard' %}"><span>SO</span><strong>SalonOps</strong></a><b>{{ user.first_name|default:user.username }}</b></header>
+  <div class="workspace"><header class="mobile-appbar"><button type="button" class="menu-toggle" aria-label="Open menu" aria-controls="app-sidebar" aria-expanded="false" data-menu-open>&#9776;</button><a class="brand" href="{% url 'dashboard' %}"><span>SO</span><strong>SalonOps</strong></a><b>{{ user.first_name|default:user.username }}</b><a class="mobile-signout" href="{% url 'logout' %}">Sign out</a></header>
 {% else %}
 <header class="topbar"><a class="brand" href="{% url 'dashboard' %}"><span>SO</span><strong>SalonOps</strong></a>{% if user.is_authenticated %}<div><b>{{ user.first_name|default:user.username }}</b><a href="{% url 'logout' %}">Sign out</a></div>{% endif %}</header><div class="workspace plain">
 {% endif %}
@@ -37,9 +37,29 @@
 {% if user.is_authenticated and user.is_superuser or user.is_authenticated and user.profile.role == 'ADMIN' or user.is_authenticated and user.profile.role == 'MANAGER' %}
 </div>
 <script>
-const shell=document.querySelector('.app-shell'),toggle=document.querySelector('[data-menu-open]');
-function menu(open){shell.classList.toggle('menu-open',open);toggle.setAttribute('aria-expanded',open);document.body.classList.toggle('menu-lock',open)}
-toggle.addEventListener('click',()=>menu(true));document.querySelectorAll('[data-menu-close]').forEach(el=>el.addEventListener('click',()=>menu(false)));document.querySelectorAll('.sidebar nav a').forEach(el=>el.addEventListener('click',()=>menu(false)));document.addEventListener('keydown',e=>{if(e.key==='Escape')menu(false)});
+(function(){
+  var shell=document.querySelector('.app-shell');
+  var toggle=document.querySelector('[data-menu-open]');
+  function menu(open){
+    if(open){
+      shell.classList.add('menu-open');
+      document.body.classList.add('menu-lock');
+    }else{
+      shell.classList.remove('menu-open');
+      document.body.classList.remove('menu-lock');
+    }
+    toggle.setAttribute('aria-expanded',open?'true':'false');
+  }
+  toggle.onclick=function(){menu(true);};
+  var closeControls=document.querySelectorAll('[data-menu-close],.sidebar nav a');
+  for(var i=0;i<closeControls.length;i+=1){
+    closeControls[i].onclick=function(){menu(false);};
+  }
+  document.onkeydown=function(event){
+    event=event||window.event;
+    if(event.key==='Escape'||event.keyCode===27){menu(false);}
+  };
+}());
 </script>
 {% endif %}
 </body></html>

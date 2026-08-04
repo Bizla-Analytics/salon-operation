@@ -99,9 +99,16 @@ def csv_import(request):
 @roles_required('MANAGER')
 def manager_dashboard(request):
     branch=user_branch(request.user)
-    services=with_progress(VisitService.objects.select_related('service','employee','chair'))
+    # Prefetch in the visit's authoritative execution order.  Do not rely on
+    # implicit model ordering after progress annotations/grouping because the
+    # manager must see the same sequence used to build the employee task plan.
+    services=(with_progress(
+        VisitService.objects.select_related('service','employee','chair')
+    ).order_by('visit_id','order_number','id'))
     visits=(Visit.objects.filter(branch=branch).exclude(status__in=['CLOSED','CANCELLED'])
-            .select_related('customer').prefetch_related(Prefetch('services',queryset=services),'invoice'))
+            .select_related('customer')
+            .prefetch_related(Prefetch('services',queryset=services),'invoice')
+            .order_by('created_at','id'))
     return render(request,'operations/manager_dashboard.html',{'visits':visits})
 
 @roles_required('MANAGER')
@@ -221,7 +228,11 @@ def add_invoice(request,visit_id):
 
 @roles_required('EMPLOYEE')
 def employee_dashboard(request):
-    jobs=with_progress(VisitService.objects.filter(employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])).select_related('visit__customer','service','chair').order_by('visit__created_at','order_number')
+    jobs=(with_progress(VisitService.objects.filter(
+        employee=request.user,
+        status__in=['ASSIGNED','IN_PROGRESS','PAUSED'],
+    )).select_related('visit__customer','service','chair')
+        .order_by('visit__created_at','visit_id','order_number','id'))
     return render(request,'operations/employee_dashboard.html',{'jobs':jobs})
 
 @roles_required('EMPLOYEE')
