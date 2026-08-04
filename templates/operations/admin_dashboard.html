@@ -1,1 +1,29 @@
-{% extends 'base.html' %}{% block title %}Admin overview · SalonOps{% endblock %}{% block content %}<header class="page-head"><div><span class="eyebrow">Administration</span><h1>Business overview</h1><p>Configure branches, people, services and operating procedures.</p></div></header><section class="metrics"><article><small>Branches</small><strong>{{ branches }}</strong></article><article><small>Team accounts</small><strong>{{ users }}</strong></article><article><small>Services</small><strong>{{ services }}</strong></article><article><small>SOP tasks</small><strong>{{ sop_tasks }}</strong></article></section><section><h2 class="section-title">Quick actions</h2><div class="action-grid"><a class="action-card" href="{% url 'create_user' %}"><i>＋</i><strong>Add team member</strong><span>Create a manager or employee account</span></a><a class="action-card" href="{% url 'csv_import' %}"><i>⇧</i><strong>Import master data</strong><span>Update services, chairs and SOP tasks</span></a><a class="action-card" href="/admin/"><i>⚙</i><strong>Manage all records</strong><span>Open detailed Django administration</span></a></div></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Admin overview · SalonOps{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><span class="eyebrow">Administration</span><h1>Business overview</h1><p>Review visits and reports or configure people, services and operating procedures.</p></div>
+</header>
+<section class="metrics">
+  <article><small>Branches</small><strong>{{ branches }}</strong></article>
+  <article><small>Team accounts</small><strong>{{ users }}</strong></article>
+  <article><small>Services</small><strong>{{ services }}</strong></article>
+  <article><small>SOP tasks</small><strong>{{ sop_tasks }}</strong></article>
+</section>
+<section>
+  <h2 class="section-title">Operations</h2>
+  <div class="action-grid">
+    <a class="action-card" href="{% url 'admin_visits' %}"><i>☷</i><strong>Visits</strong><span>Search customers and filter every visit</span></a>
+    <a class="action-card" href="{% url 'admin_reports' %}"><i>▥</i><strong>Complete reports</strong><span>Branch, service, revenue, timing and feedback summaries</span></a>
+    <a class="action-card" href="/admin/"><i>⚙</i><strong>Manage all records</strong><span>Open detailed Django administration</span></a>
+  </div>
+</section>
+<section>
+  <h2 class="section-title">Setup</h2>
+  <div class="action-grid">
+    <a class="action-card" href="{% url 'create_user' %}"><i>＋</i><strong>Add team member</strong><span>Create a manager or employee account</span></a>
+    <a class="action-card" href="{% url 'csv_import' %}"><i>⇧</i><strong>Import master data</strong><span>Update services, chairs and SOP tasks</span></a>
+    <a class="action-card" href="{% url 'service_catalog' %}"><i>≡</i><strong>Service catalogue</strong><span>Inspect service procedures and resources</span></a>
+  </div>
+</section>
+{% endblock %}

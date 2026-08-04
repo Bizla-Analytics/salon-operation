@@ -238,7 +238,7 @@ class Visit(TimeStamped):
     closed_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Visit {self.id} - {self.customer.name}"
+        return f"Visit #{self.id} - {self.customer.name} ({self.branch.name})"
 
 
 class VisitService(TimeStamped):
@@ -262,7 +262,7 @@ class VisitService(TimeStamped):
         unique_together = ("visit", "order_number")
 
     def __str__(self):
-        return f"#{self.order_number} {self.visit.customer.name} - {self.service.name}"
+        return f"Visit #{self.visit_id} - {self.visit.customer.name} - #{self.order_number} {self.service.name}"
 
     @property
     def progress_percent(self):
@@ -302,7 +302,7 @@ class VisitTask(TimeStamped):
         unique_together = ("visit_service", "sequence")
 
     def __str__(self):
-        return self.title
+        return f"Visit #{self.visit_service.visit_id} - {self.visit_service.visit.customer.name} - {self.title}"
 
 
 class Invoice(TimeStamped):
@@ -313,7 +313,7 @@ class Invoice(TimeStamped):
     entered_by = models.ForeignKey(User, on_delete=models.PROTECT)
 
     def __str__(self):
-        return self.invoice_number
+        return f"{self.invoice_number} - {self.visit.customer.name} (Visit #{self.visit_id})"
 
 
 class FeedbackQuestion(TimeStamped):
@@ -335,7 +335,7 @@ class Feedback(TimeStamped):
     submitted_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Feedback {self.visit_id}"
+        return f"Feedback #{self.pk} - {self.visit.customer.name} (Visit #{self.visit_id})"
 
 
 class FeedbackAnswer(models.Model):
@@ -345,3 +345,6 @@ class FeedbackAnswer(models.Model):
 
     class Meta:
         unique_together = ("feedback", "question")
+
+    def __str__(self):
+        return f"{self.feedback.visit.customer.name} - {self.rating}/5 (Visit #{self.feedback.visit_id})"

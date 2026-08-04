@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Visits · SalonOps{% endblock %}
+{% block content %}
+<header class="page-head">
+  <span class="eyebrow">Administration</span><h1>Visits</h1><p>Search and review every customer visit across all branches.</p>
+</header>
+<form class="panel admin-filter" method="get">
+  <div><label for="visit-search">Search</label><input class="form-control" id="visit-search" name="q" value="{{ filters.q }}" placeholder="Customer, mobile, visit, invoice, service or employee"></div>
+  <div><label for="branch-filter">Branch</label><select class="form-control" id="branch-filter" name="branch"><option value="">All branches</option>{% for branch in branches %}<option value="{{ branch.pk }}"{% if filters.branch == branch.pk|stringformat:'s' %} selected{% endif %}>{{ branch.name }}</option>{% endfor %}</select></div>
+  <div><label for="service-filter">Service</label><select class="form-control" id="service-filter" name="service"><option value="">All services</option>{% for service in service_options %}<option value="{{ service.pk }}"{% if filters.service == service.pk|stringformat:'s' %} selected{% endif %}>{{ service.code }} · {{ service.name }}</option>{% endfor %}</select></div>
+  <div><label for="status-filter">Status</label><select class="form-control" id="status-filter" name="status"><option value="">All statuses</option>{% for value,label in status_options %}<option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+  <button class="button primary" type="submit">Apply filters</button>
+  <a class="button outline" href="{% url 'admin_visits' %}">Clear</a>
+</form>
+<div class="result-heading"><strong>{{ page.paginator.count }} visit{{ page.paginator.count|pluralize }}</strong><span>Newest visits first</span></div>
+<section class="admin-visit-list">
+{% for visit in page %}
+  <article class="visit-card admin-visit-card">
+    <header>
+      <div><span class="eyebrow">Visit #{{ visit.pk }}</span><h2>{{ visit.customer.name }}</h2><p>{{ visit.branch.name }} · {{ visit.created_at|date:"d M Y, g:i A" }}</p></div>
+      <span class="status {{ visit.status|lower }}">{{ visit.get_status_display }}</span>
+    </header>
+    <div class="visit-facts">
+      <span><small>Contact</small><b>{{ visit.customer.mobile|default:"Not provided" }}</b></span>
+      <span><small>Token</small><b>{{ visit.token_number|default:"—" }}</b></span>
+      <span><small>Tasks</small><b>{{ visit.task_done }}/{{ visit.task_total }} · {{ visit.admin_progress }}%</b></span>
+      <span><small>Invoice</small><b>{% if visit.invoice %}{{ visit.invoice.invoice_number }} · ₹{{ visit.invoice.amount }}{% else %}Not invoiced{% endif %}</b></span>
+      <span><small>Feedback</small><b>{% if visit.feedback_average %}{{ visit.feedback_average|floatformat:1 }}/5{% else %}Not submitted{% endif %}</b></span>
+    </div>
+    <div class="admin-service-list">
+      {% for item in visit.services.all %}<div><b>#{{ item.order_number }} {{ item.service.name }}</b><span>{{ item.employee.first_name|default:item.employee.username }}{% if item.chair %} · {{ item.chair.name }}{% endif %}</span><span class="status {{ item.status|lower }}">{{ item.get_status_display }} · {{ item.progress_percent }}%</span></div>{% empty %}<p class="muted">No services assigned.</p>{% endfor %}
+    </div>
+    <footer><a class="button outline" href="{% url 'admin:operations_visit_change' visit.pk %}">Open detailed record</a></footer>
+  </article>
+{% empty %}
+  <div class="empty-state"><b>No visits match these filters</b><span>Clear the filters or try a different search.</span></div>
+{% endfor %}
+</section>
+{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Visit pages">{% if page.has_previous %}<a class="button outline" href="?q={{ filters.q|urlencode }}&branch={{ filters.branch }}&service={{ filters.service }}&status={{ filters.status }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}<span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="button outline" href="?q={{ filters.q|urlencode }}&branch={{ filters.branch }}&service={{ filters.service }}&status={{ filters.status }}&page={{ page.next_page_number }}">Next</a>{% endif %}</nav>{% endif %}
+{% endblock %}

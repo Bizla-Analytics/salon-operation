@@ -3,8 +3,9 @@ from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.paginator import Paginator
 from django.db import connection, transaction
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Avg, Count, Prefetch, Q, Sum
 from django.shortcuts import render,redirect,get_object_or_404
 from django.http import JsonResponse
 from django.utils import timezone
@@ -39,6 +40,136 @@ def logout_view(request): logout(request); return redirect('login')
 @roles_required('ADMIN')
 def admin_dashboard(request):
     return render(request,'operations/admin_dashboard.html',{'branches':Branch.objects.count(),'users':User.objects.count(),'services':Service.objects.count(),'sop_tasks':OperationalTask.objects.count()})
+
+
+@roles_required('ADMIN')
+def admin_reports(request):
+    """Business-wide operational reporting without exposing edit controls."""
+    visits = Visit.objects.all()
+    task_summary = VisitTask.objects.aggregate(
+        total=Count('id'),
+        completed=Count('id', filter=Q(status='COMPLETED')),
+        skipped=Count('id', filter=Q(status='SKIPPED')),
+        labour_minutes=Sum('active_labour_minutes'),
+        passive_minutes=Sum('passive_time_minutes'),
+    )
+    summary = {
+        'visits': visits.count(),
+        'active_visits': visits.filter(status__in=['WAITING', 'ASSIGNED', 'IN_PROGRESS', 'EMPLOYEE_DONE']).count(),
+        'completed_visits': visits.filter(status__in=['VERIFIED', 'INVOICED', 'CLOSED']).count(),
+        'customers': Customer.objects.count(),
+        'invoices': Invoice.objects.count(),
+        'revenue': Invoice.objects.aggregate(total=Sum('amount'))['total'] or 0,
+        'feedback_requests': Feedback.objects.count(),
+        'feedback_submitted': Feedback.objects.filter(submitted_at__isnull=False).count(),
+        'feedback_average': FeedbackAnswer.objects.aggregate(value=Avg('rating'))['value'],
+    }
+    task_summary = {key: value or 0 for key, value in task_summary.items()}
+
+    branch_rows = list(
+        Branch.objects.annotate(
+            visit_count=Count('visits', distinct=True),
+            active_visit_count=Count(
+                'visits',
+                filter=Q(visits__status__in=['WAITING', 'ASSIGNED', 'IN_PROGRESS', 'EMPLOYEE_DONE']),
+                distinct=True,
+            ),
+            invoice_count=Count('visits__invoice', distinct=True),
+            revenue=Sum('visits__invoice__amount'),
+        ).order_by('name')
+    )
+    branch_feedback = {
+        row['feedback__visit__branch_id']: row['average']
+        for row in FeedbackAnswer.objects.values('feedback__visit__branch_id').annotate(average=Avg('rating'))
+    }
+    for branch in branch_rows:
+        branch.revenue = branch.revenue or 0
+        branch.feedback_average = branch_feedback.get(branch.pk)
+
+    service_rows = Service.objects.annotate(
+        visit_count=Count('visitservice', distinct=True),
+        completed_count=Count(
+            'visitservice',
+            filter=Q(visitservice__status__in=['EMPLOYEE_DONE', 'VERIFIED']),
+            distinct=True,
+        ),
+        labour_minutes=Sum('visitservice__tasks__active_labour_minutes'),
+        passive_minutes=Sum('visitservice__tasks__passive_time_minutes'),
+    ).order_by('-visit_count', 'name')
+    status_rows = visits.values('status').annotate(total=Count('id')).order_by('status')
+    rating_rows = FeedbackAnswer.objects.values('rating').annotate(total=Count('id')).order_by('rating')
+    recent_feedback = Feedback.objects.filter(submitted_at__isnull=False).select_related(
+        'visit__customer', 'visit__branch'
+    ).prefetch_related('answers').order_by('-submitted_at')[:10]
+    for feedback in recent_feedback:
+        ratings = [answer.rating for answer in feedback.answers.all()]
+        feedback.average_rating = sum(ratings) / len(ratings) if ratings else None
+
+    return render(request, 'operations/admin_reports.html', {
+        'summary': summary,
+        'task_summary': task_summary,
+        'branch_rows': branch_rows,
+        'service_rows': service_rows,
+        'status_rows': status_rows,
+        'rating_rows': rating_rows,
+        'recent_feedback': recent_feedback,
+    })
+
+
+@roles_required('ADMIN')
+def admin_visits(request):
+    """Searchable, read-only visit cards for administrators."""
+    query = request.GET.get('q', '').strip()
+    branch_id = request.GET.get('branch', '').strip()
+    service_id = request.GET.get('service', '').strip()
+    status = request.GET.get('status', '').strip()
+    service_queryset = with_progress(
+        VisitService.objects.select_related('service', 'employee', 'chair')
+    ).order_by('order_number', 'id')
+    visits = Visit.objects.select_related('branch', 'customer', 'invoice', 'feedback').prefetch_related(
+        Prefetch('services', queryset=service_queryset)
+    )
+    if query:
+        search = (
+            Q(customer__name__icontains=query)
+            | Q(customer__mobile__icontains=query)
+            | Q(customer__email__icontains=query)
+            | Q(token_number__icontains=query)
+            | Q(services__service__name__icontains=query)
+            | Q(services__service__code__icontains=query)
+            | Q(services__employee__username__icontains=query)
+            | Q(services__employee__first_name__icontains=query)
+            | Q(invoice__invoice_number__icontains=query)
+        )
+        if query.isdigit():
+            search |= Q(pk=int(query))
+        visits = visits.filter(search)
+    if branch_id.isdigit():
+        visits = visits.filter(branch_id=int(branch_id))
+    if service_id.isdigit():
+        visits = visits.filter(services__service_id=int(service_id))
+    valid_statuses = {choice[0] for choice in Visit.STATUS}
+    if status in valid_statuses:
+        visits = visits.filter(status=status)
+    visits = visits.annotate(
+        task_total=Count('services__tasks', distinct=True),
+        task_done=Count(
+            'services__tasks',
+            filter=Q(services__tasks__status__in=['COMPLETED', 'SKIPPED']),
+            distinct=True,
+        ),
+        feedback_average=Avg('feedback__answers__rating'),
+    ).distinct().order_by('-created_at', '-id')
+    page = Paginator(visits, 20).get_page(request.GET.get('page'))
+    for visit in page.object_list:
+        visit.admin_progress = int(visit.task_done * 100 / visit.task_total) if visit.task_total else 0
+    return render(request, 'operations/admin_visits.html', {
+        'page': page,
+        'branches': Branch.objects.order_by('name'),
+        'service_options': Service.objects.order_by('name'),
+        'status_options': Visit.STATUS,
+        'filters': {'q': query, 'branch': branch_id, 'service': service_id, 'status': status},
+    })
 
 @roles_required('ADMIN')
 def service_catalog(request):

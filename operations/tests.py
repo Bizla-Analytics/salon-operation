@@ -1,12 +1,16 @@
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .forms import InvoiceForm, VisitCreateForm, VisitEditForm
 from .models import (
     Branch,
     Customer,
     Feedback,
+    FeedbackAnswer,
     FeedbackQuestion,
     Invoice,
     OperationalTask,
@@ -235,6 +239,75 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Client Consultation")
         self.assertContains(response, "Sanitisation")
+
+    def test_admin_visit_explorer_searches_and_filters_visit_cards(self):
+        visit, _, _ = self.create_visit()
+        admin = User.objects.create_superuser("visit-admin", "visit-admin@example.com", "test")
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse("admin_visits"), {
+            "q": self.customer.name,
+            "branch": self.branch.pk,
+            "service": self.service_a.pk,
+            "status": "ASSIGNED",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page"].paginator.count, 1)
+        self.assertContains(response, self.customer.name)
+        self.assertContains(response, f"Visit #{visit.pk}")
+        self.assertContains(response, self.service_a.name)
+        self.assertContains(response, "Apply filters")
+
+    def test_admin_reports_include_revenue_tasks_and_feedback(self):
+        visit, _, _ = self.create_visit()
+        Invoice.objects.create(
+            visit=visit,
+            invoice_number="REPORT-1",
+            amount=Decimal("250.00"),
+            entered_by=self.manager,
+        )
+        feedback = Feedback.objects.create(visit=visit, submitted_at=timezone.now(), suggestion="Great visit")
+        question = FeedbackQuestion.objects.filter(active=True).first()
+        FeedbackAnswer.objects.create(feedback=feedback, question=question, rating=5)
+        admin = User.objects.create_superuser("report-admin", "report-admin@example.com", "test")
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse("admin_reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary"]["visits"], 1)
+        self.assertEqual(response.context["summary"]["revenue"], Decimal("250.00"))
+        self.assertEqual(response.context["summary"]["feedback_average"], 5)
+        self.assertContains(response, "Branch performance")
+        self.assertContains(response, "Service performance")
+        self.assertContains(response, "Great visit")
+
+    def test_visit_related_labels_include_customer_and_visit(self):
+        visit, first, _ = self.create_visit()
+        feedback = Feedback.objects.create(visit=visit)
+        question = FeedbackQuestion.objects.filter(active=True).first()
+        answer = FeedbackAnswer.objects.create(feedback=feedback, question=question, rating=4)
+
+        self.assertIn(self.customer.name, str(visit))
+        self.assertIn(self.customer.name, str(first))
+        self.assertIn(self.customer.name, str(first.tasks.first()))
+        self.assertIn(self.customer.name, str(feedback))
+        self.assertIn(self.customer.name, str(answer))
+        self.assertIn(f"Visit #{visit.pk}", str(feedback))
+
+        admin = User.objects.create_superuser("records-admin", "records-admin@example.com", "test")
+        self.client.force_login(admin)
+        feedback_page = self.client.get(reverse("admin:operations_feedback_changelist"))
+        answer_page = self.client.get(reverse("admin:operations_feedbackanswer_changelist"))
+        self.assertContains(feedback_page, self.customer.name)
+        self.assertContains(feedback_page, f"Visit #{visit.pk}")
+        self.assertContains(answer_page, self.customer.name)
+
+    def test_manager_cannot_open_admin_reports_or_visit_explorer(self):
+        self.client.force_login(self.manager)
+        self.assertEqual(self.client.get(reverse("admin_reports")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("admin_visits")).status_code, 403)
 
     def test_invoice_form_does_not_request_payment_method(self):
         form = InvoiceForm()

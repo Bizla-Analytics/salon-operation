@@ -17,6 +17,8 @@
       <a href="{% url 'dashboard' %}">&#8962; <span>Overview</span></a>
       {% if user.is_superuser or user.profile.role == 'ADMIN' %}
         <p>Administration</p>
+        <a href="{% url 'admin_visits' %}">&#128203; <span>Visits</span></a>
+        <a href="{% url 'admin_reports' %}">&#128202; <span>Reports</span></a>
         <a href="{% url 'service_catalog' %}">&#9776; <span>Service catalogue</span></a>
         <a href="{% url 'create_user' %}">+ <span>Add team member</span></a>
         <a href="{% url 'csv_import' %}">&#8679; <span>Import data</span></a>
