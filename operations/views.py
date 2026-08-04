@@ -124,7 +124,17 @@ def admin_visits(request):
     service_id = request.GET.get('service', '').strip()
     status = request.GET.get('status', '').strip()
     service_queryset = with_progress(
-        VisitService.objects.select_related('service', 'employee', 'chair')
+        VisitService.objects.select_related('service', 'employee', 'chair').prefetch_related(
+            Prefetch(
+                'tasks',
+                queryset=VisitTask.objects.only(
+                    'visit_service_id',
+                    'status',
+                    'started_at',
+                    'completed_at',
+                ),
+            )
+        )
     ).order_by('order_number', 'id')
     visits = Visit.objects.select_related('branch', 'customer', 'invoice', 'feedback').prefetch_related(
         Prefetch('services', queryset=service_queryset)
@@ -163,6 +173,22 @@ def admin_visits(request):
     page = Paginator(visits, 20).get_page(request.GET.get('page'))
     for visit in page.object_list:
         visit.admin_progress = int(visit.task_done * 100 / visit.task_total) if visit.task_total else 0
+        visit_services = list(visit.services.all())
+        total_seconds = sum(
+            max((task.completed_at - task.started_at).total_seconds(), 0)
+            for item in visit_services
+            if item.status in ['EMPLOYEE_DONE', 'VERIFIED']
+            for task in item.tasks.all()
+            if task.status == 'COMPLETED' and task.started_at and task.completed_at
+        )
+        total_minutes = int((total_seconds / 60) + 0.5)
+        hours, minutes = divmod(total_minutes, 60)
+        if hours and minutes:
+            visit.total_task_time = f"{hours} hour{'s' if hours != 1 else ''} {minutes} minute{'s' if minutes != 1 else ''}"
+        elif hours:
+            visit.total_task_time = f"{hours} hour{'s' if hours != 1 else ''}"
+        else:
+            visit.total_task_time = f"{minutes} minute{'s' if minutes != 1 else ''}"
     return render(request, 'operations/admin_visits.html', {
         'page': page,
         'branches': Branch.objects.order_by('name'),

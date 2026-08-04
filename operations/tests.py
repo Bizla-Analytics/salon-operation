@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -242,6 +243,11 @@ class CombinedServiceWorkflowTests(TestCase):
 
     def test_admin_visit_explorer_searches_and_filters_visit_cards(self):
         visit, _, _ = self.create_visit()
+        timed_task = visit.services.order_by("order_number").first().tasks.first()
+        timed_task.status = "COMPLETED"
+        timed_task.started_at = timezone.now() - timedelta(minutes=100)
+        timed_task.completed_at = timezone.now()
+        timed_task.save(update_fields=["status", "started_at", "completed_at"])
         admin = User.objects.create_superuser("visit-admin", "visit-admin@example.com", "test")
         self.client.force_login(admin)
 
@@ -258,6 +264,16 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertContains(response, f"Visit #{visit.pk}")
         self.assertContains(response, self.service_a.name)
         self.assertContains(response, "Apply filters")
+        self.assertContains(response, "Actual working time")
+        self.assertContains(response, "0 minutes")
+        self.assertNotContains(response, "<small>Token</small>", html=True)
+        self.assertNotContains(response, "<small>Invoice</small>", html=True)
+
+        first_service = visit.services.order_by("order_number").first()
+        first_service.status = "EMPLOYEE_DONE"
+        first_service.save(update_fields=["status"])
+        response = self.client.get(reverse("admin_visits"), {"q": self.customer.name})
+        self.assertContains(response, "1 hour 40 minutes")
 
     def test_admin_reports_include_revenue_tasks_and_feedback(self):
         visit, _, _ = self.create_visit()

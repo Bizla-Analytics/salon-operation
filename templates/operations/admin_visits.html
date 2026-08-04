@@ -22,9 +22,8 @@
     </header>
     <div class="visit-facts">
       <span><small>Contact</small><b>{{ visit.customer.mobile|default:"Not provided" }}</b></span>
-      <span><small>Token</small><b>{{ visit.token_number|default:"—" }}</b></span>
       <span><small>Tasks</small><b>{{ visit.task_done }}/{{ visit.task_total }} · {{ visit.admin_progress }}%</b></span>
-      <span><small>Invoice</small><b>{% if visit.invoice %}{{ visit.invoice.invoice_number }} · ₹{{ visit.invoice.amount }}{% else %}Not invoiced{% endif %}</b></span>
+      <span><small>Actual working time</small><b>{{ visit.total_task_time }}</b></span>
       <span><small>Feedback</small><b>{% if visit.feedback_average %}{{ visit.feedback_average|floatformat:1 }}/5{% else %}Not submitted{% endif %}</b></span>
     </div>
     <div class="admin-service-list">
