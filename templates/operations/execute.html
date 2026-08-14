@@ -2,7 +2,7 @@
 <div class="employee-work"><header class="task-head"><div><span class="eyebrow">Current service</span><h1>{{ vs.visit.customer.name }}</h1><p class="muted">{{ vs.service.name }} · {{ vs.chair|default:'No chair' }}</p></div><div class="service-progress"><b>{{ vs.progress_percent }}%</b><span>complete</span></div></header>
 <div class="progress service-progress-bar"><i style="width:{{ vs.progress_percent }}%"></i></div>
 <div class="full-task-list">{% for task in tasks %}<article class="task-item {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}task-finished{% elif task.status == 'IN_PROGRESS' %}task-active{% endif %}">
-<header><div><span class="task-number">{{ task.sequence }}</span><span class="task-meta">{{ task.get_phase_display }} · {{ task.get_task_type_display }}</span><h2>{{ task.title }}</h2>{% if task.instructions %}<p>{{ task.instructions }}</p>{% endif %}</div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></header>
+<header><div><h2><span class="task-number">{{ forloop.counter }}</span>{{ task.title }}</h2></div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></header>
 {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}<div class="finished-note">{% if task.status == 'COMPLETED' %}✓ Completed{% else %}Skipped{% if task.skip_reason %}: {{ task.skip_reason }}{% endif %}{% endif %}</div>
 {% else %}<div class="task-actions">
 <form method="post" action="{% url 'task_action' task.id 'start' %}">{% csrf_token %}<button class="task-button start {% if task.status == 'IN_PROGRESS' %}pressed{% endif %}" {% if task.status == 'IN_PROGRESS' %}disabled{% endif %}>{% if task.status == 'IN_PROGRESS' %}Started{% else %}Start{% endif %}</button></form>

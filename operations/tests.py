@@ -148,15 +148,32 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertContains(response, 'name="services-0-service"')
         self.assertNotContains(response, "<datalist")
 
-    def test_empty_assignment_page_only_adds_a_row_when_manager_requests_it(self):
+    def test_first_assignment_page_starts_with_one_row_but_reedit_has_no_extra_row(self):
         visit = Visit.objects.create(
             branch=self.branch, customer=self.customer, status="WAITING", created_by=self.manager
         )
         self.client.force_login(self.manager)
         response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["formset"].total_form_count(), 0)
+        self.assertEqual(response.context["formset"].total_form_count(), 1)
         self.assertContains(response, "+ Add another service")
+
+        assigned_visit, _, _ = self.create_visit()
+        response = self.client.get(reverse("edit_visit_services", args=[assigned_visit.pk]))
+        self.assertEqual(response.context["formset"].total_form_count(), 2)
+
+    def test_employee_task_cards_only_show_task_name_and_mobile_status(self):
+        _, first, _ = self.create_visit()
+        task = first.tasks.first()
+        task.instructions = "Long confusing instructions must not appear on the card."
+        task.save(update_fields=["instructions"])
+        self.client.force_login(self.employee)
+        response = self.client.get(reverse("execute_service", args=[first.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, task.title)
+        self.assertContains(response, task.get_status_display())
+        self.assertNotContains(response, task.instructions)
+        self.assertNotContains(response, task.get_phase_display())
 
     def test_manager_can_reorder_services_and_rebuild_pending_plan(self):
         visit, first, second = self.create_visit()
