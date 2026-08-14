@@ -1,8 +1,9 @@
 from django import forms
 from django.contrib.auth.models import User
+from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.db.models import Q
 
-from .models import Branch, Chair, Invoice, Profile, Service
+from .models import Branch, Chair, Invoice, Profile, Service, Visit, VisitService
 
 
 class BootstrapMixin:
@@ -16,70 +17,128 @@ class BootstrapMixin:
 
 class VisitCreateForm(BootstrapMixin, forms.Form):
     customer_name = forms.CharField(max_length=120)
-    mobile = forms.CharField(max_length=30, required=False)
-    services = forms.ModelMultipleChoiceField(
-        queryset=Service.objects.none(),
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Select services in the order they should be completed.",
+    mobile = forms.CharField(
+        max_length=10,
+        required=False,
+        help_text="Optional. Enter exactly 10 digits when provided.",
     )
-    service_order = forms.CharField(widget=forms.HiddenInput, required=False)
-    employee = forms.ModelChoiceField(queryset=User.objects.none())
-    chair = forms.ModelChoiceField(queryset=Chair.objects.none(), required=False)
+    invoice_number = forms.CharField(
+        required=False,
+        disabled=True,
+        label="Invoice number",
+        help_text="Available after every service has been verified.",
+        widget=forms.TextInput(attrs={"placeholder": "Available after verification"}),
+    )
+
+    def clean_mobile(self):
+        mobile = self.cleaned_data["mobile"].strip()
+        if mobile and (not mobile.isdigit() or len(mobile) != 10):
+            raise forms.ValidationError("Enter a valid 10-digit mobile number.")
+        return mobile
+
+
+class CompleteInvoiceForm(VisitCreateForm):
+    invoice_number = forms.CharField(max_length=50, required=True)
+
+    def clean_invoice_number(self):
+        value = self.cleaned_data["invoice_number"].strip()
+        if Invoice.objects.filter(invoice_number=value, status="COMPLETED").exists():
+            raise forms.ValidationError("This invoice number is already in use.")
+        return value
+
+
+class VisitServiceAssignmentForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        model = VisitService
+        fields = ["order_number", "service", "employee", "chair"]
 
     def __init__(self, *args, branch=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["services"].queryset = Service.objects.filter(active=True)
-        if branch:
-            self.fields["employee"].queryset = User.objects.filter(
+        current_service = self.instance.service_id if self.instance.pk else None
+        current_employee = self.instance.employee_id if self.instance.pk else None
+        current_chair = self.instance.chair_id if self.instance.pk else None
+        self.fields["service"].queryset = Service.objects.filter(Q(active=True) | Q(pk=current_service)).distinct()
+        self.fields["employee"].queryset = User.objects.filter(
+            Q(pk=current_employee) | Q(
                 profile__branch=branch,
                 profile__role="EMPLOYEE",
                 profile__active=True,
                 is_active=True,
             )
-            self.fields["chair"].queryset = Chair.objects.filter(branch=branch, active=True)
+        ).distinct()
+        self.fields["chair"].queryset = Chair.objects.filter(
+            Q(pk=current_chair) | Q(branch=branch, active=True)
+        ).distinct()
+        if self.instance.pk and self.instance.status != "ASSIGNED":
+            for field in self.fields.values():
+                field.disabled = True
+
+
+class BaseVisitServiceFormSet(BaseInlineFormSet):
+    def __init__(self, *args, branch=None, **kwargs):
+        self.branch = branch
+        super().__init__(*args, **kwargs)
+        for form in self.forms:
+            if form.instance.pk and form.instance.status != "ASSIGNED":
+                form.fields["DELETE"].disabled = True
+
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs["branch"] = self.branch
+        return kwargs
 
     def clean(self):
-        cleaned = super().clean()
-        selected = list(cleaned.get("services") or [])
-        selected_by_id = {service.pk: service for service in selected}
-        raw_order = cleaned.get("service_order", "")
-        try:
-            ordered_ids = [int(value) for value in raw_order.split(",") if value]
-        except ValueError:
-            ordered_ids = []
-        if len(ordered_ids) != len(set(ordered_ids)) or set(ordered_ids) != set(selected_by_id):
-            ordered_ids = [service.pk for service in selected]
-        cleaned["ordered_services"] = [selected_by_id[service_id] for service_id in ordered_ids]
-        return cleaned
+        super().clean()
+        if any(self.errors):
+            return
+        active = [
+            form for form in self.forms
+            if form.cleaned_data and not form.cleaned_data.get("DELETE")
+            and form.cleaned_data.get("service")
+        ]
+        if not active:
+            raise forms.ValidationError("Add at least one service to the visit.")
+        order_numbers = [form.cleaned_data["order_number"] for form in active]
+        if len(order_numbers) != len(set(order_numbers)):
+            raise forms.ValidationError("Every active service must have a unique order number.")
+        locked_orders = [
+            form.instance.order_number for form in active
+            if form.instance.pk and form.instance.status != "ASSIGNED"
+        ]
+        if locked_orders:
+            locked_prefix_end = max(locked_orders)
+            editable_orders = [
+                form.cleaned_data["order_number"] for form in active
+                if not form.instance.pk or form.instance.status == "ASSIGNED"
+            ]
+            if any(order <= locked_prefix_end for order in editable_orders):
+                raise forms.ValidationError(
+                    "Upcoming services must remain after every started or completed service."
+                )
 
 
-class VisitEditForm(VisitCreateForm):
-    customer_name = None
-    mobile = None
+VisitServiceFormSet = inlineformset_factory(
+    Visit,
+    VisitService,
+    form=VisitServiceAssignmentForm,
+    formset=BaseVisitServiceFormSet,
+    fields=["order_number", "service", "employee", "chair"],
+    extra=0,
+    can_delete=True,
+)
 
-    def __init__(self, *args, visit=None, branch=None, **kwargs):
-        self.visit = visit
-        # Views commonly instantiate forms with ``request.POST or None``.  On a
-        # GET that still gives us one positional argument (None), so checking
-        # only ``not args`` leaves the edit form empty and makes a later submit
-        # look like the manager intentionally removed the previous services.
-        data = args[0] if args else kwargs.get("data")
-        files = args[1] if len(args) > 1 else kwargs.get("files")
-        is_bound = data is not None or files is not None
-        if visit and not is_bound and "initial" not in kwargs:
-            visit_services = list(visit.services.order_by("order_number", "id"))
-            kwargs["initial"] = {
-                "services": [item.service_id for item in visit_services],
-                "service_order": ",".join(str(item.service_id) for item in visit_services),
-                "employee": visit_services[0].employee_id if visit_services else None,
-                "chair": visit_services[0].chair_id if visit_services else None,
-            }
-        super().__init__(*args, branch=branch, **kwargs)
-        if visit:
-            current_service_ids = visit.services.values_list("service_id", flat=True)
-            self.fields["services"].queryset = Service.objects.filter(
-                Q(active=True) | Q(pk__in=current_service_ids)
-            ).distinct()
+
+class CancelAndReassignForm(BootstrapMixin, forms.Form):
+    cancellation_reason = forms.CharField(max_length=250, widget=forms.Textarea(attrs={"rows": 3}))
+    employee = forms.ModelChoiceField(queryset=User.objects.none())
+    chair = forms.ModelChoiceField(queryset=Chair.objects.none(), required=False)
+
+    def __init__(self, *args, branch=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["employee"].queryset = User.objects.filter(
+            profile__branch=branch, profile__role="EMPLOYEE", profile__active=True, is_active=True
+        )
+        self.fields["chair"].queryset = Chair.objects.filter(branch=branch, active=True)
 
 
 class ServiceLookupForm(BootstrapMixin, forms.Form):

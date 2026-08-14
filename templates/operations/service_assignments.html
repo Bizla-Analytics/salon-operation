@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Service assignments · SalonOps{% endblock %}
+{% block content %}
+<header class="page-head split">
+  <div><span class="eyebrow">Manager</span><h1>{{ title }}</h1><p>One staff member and one chair can be selected for each service. Started work is locked.</p></div>
+  <a href="{% url 'manager_dashboard' %}" class="button outline">Back</a>
+</header>
+<form method="post" class="visit-builder" id="assignment-form">
+  {% csrf_token %}{{ formset.management_form }}{{ formset.non_form_errors }}
+  <section class="panel assignment-list">
+    <div class="assignment-head"><b>Order</b><b>Service</b><b>Staff</b><b>Chair</b><b>Action</b></div>
+    <div id="assignment-rows">
+    {% for form in formset %}
+      <div class="assignment-row {% if form.instance.pk and form.instance.status != 'ASSIGNED' %}locked{% endif %}">
+        {{ form.id }}
+        <div>{{ form.order_number }}{{ form.order_number.errors }}</div>
+        <div><div class="service-combobox" data-selected-label="{% if form.instance.service_id %}{{ form.instance.service }}{% endif %}"><input type="text" class="form-control service-combobox-input" value="{% if form.instance.service_id %}{{ form.instance.service }}{% endif %}" placeholder="Type service name or code" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"><div class="service-combobox-menu" role="listbox"></div>{{ form.service }}</div>{{ form.service.errors }}</div>
+        <div>{{ form.employee }}{{ form.employee.errors }}</div>
+        <div>{{ form.chair }}{{ form.chair.errors }}</div>
+        <div class="assignment-action">
+          {% if form.instance.pk and form.instance.status != 'ASSIGNED' %}
+            <span class="status {{ form.instance.status|lower }}">{{ form.instance.get_status_display }}</span>
+            {% if form.instance.status == 'IN_PROGRESS' or form.instance.status == 'PAUSED' %}<a class="button outline" href="{% url 'cancel_and_reassign_service' form.instance.pk %}">Cancel &amp; reassign</a>{% endif %}
+          {% else %}<label class="delete-label">{{ form.DELETE }} Remove</label>{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+    <template id="empty-assignment-row"><div class="assignment-row">{{ formset.empty_form.id }}<div>{{ formset.empty_form.order_number }}</div><div><div class="service-combobox"><input type="text" class="form-control service-combobox-input" placeholder="Type service name or code" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"><div class="service-combobox-menu" role="listbox"></div>{{ formset.empty_form.service }}</div></div><div>{{ formset.empty_form.employee }}</div><div>{{ formset.empty_form.chair }}</div><div class="assignment-action"><label class="delete-label">{{ formset.empty_form.DELETE }} Remove</label></div></div></template>
+    <button type="button" class="button outline" id="add-assignment">+ Add another service</button>
+  </section>
+  <button class="button primary large">Save service assignments</button>
+</form>
+<script>
+(function(){
+  var add=document.getElementById('add-assignment'), rows=document.getElementById('assignment-rows');
+  var total=document.getElementById('id_services-TOTAL_FORMS'), template=document.getElementById('empty-assignment-row');
+  function initialiseSearch(row){
+    var box=row.querySelector('.service-combobox'), input=box&&box.querySelector('.service-combobox-input');
+    var menu=box&&box.querySelector('.service-combobox-menu'), select=box&&box.querySelector('select');
+    if(!box||!input||!menu||!select){return;}
+    var options=[], active=-1;
+    for(var i=0;i<select.options.length;i++){
+      if(select.options[i].value){options.push({value:select.options[i].value,text:select.options[i].text});}
+      if(select.options[i].selected&&select.options[i].value){input.value=select.options[i].text;}
+    }
+    if(!input.value&&box.getAttribute('data-selected-label')){input.value=box.getAttribute('data-selected-label');}
+    box.className+=' combobox-ready';
+    if(select.disabled){input.disabled=true;return;}
+    function close(){menu.innerHTML='';menu.style.display='none';input.setAttribute('aria-expanded','false');active=-1;}
+    function choose(option){select.value=option.value;input.value=option.text;close();}
+    function render(){
+      var query=(input.value||'').toLowerCase(), matches=[];
+      for(var j=0;j<options.length&&matches.length<30;j++){
+        if(!query||options[j].text.toLowerCase().indexOf(query)!==-1){matches.push(options[j]);}
+      }
+      menu.innerHTML='';active=-1;
+      if(!matches.length){var empty=document.createElement('div');empty.className='combobox-empty';empty.appendChild(document.createTextNode('No matching service'));menu.appendChild(empty);}
+      for(var k=0;k<matches.length;k++){
+        (function(option){var item=document.createElement('button');item.type='button';item.className='combobox-option';item.setAttribute('role','option');item.appendChild(document.createTextNode(option.text));
+          function selectNow(event){if(event&&event.preventDefault){event.preventDefault();}choose(option);return false;}
+          item.onmousedown=selectNow;item.ontouchstart=selectNow;item.onclick=function(){choose(option);};menu.appendChild(item);}(matches[k]));
+      }
+      menu.style.display='block';input.setAttribute('aria-expanded','true');
+    }
+    function highlight(direction){
+      var items=menu.querySelectorAll('.combobox-option');if(!items.length){return;}
+      active=(active+direction+items.length)%items.length;
+      for(var j=0;j<items.length;j++){items[j].className='combobox-option'+(j===active?' active':'');}
+      items[active].scrollIntoView(false);
+    }
+    input.onfocus=function(){input.select();render();};
+    input.oninput=function(){select.value='';render();};
+    input.onkeydown=function(event){event=event||window.event;var key=event.key||event.keyCode;
+      if(key==='ArrowDown'||key===40){event.preventDefault();highlight(1);}
+      else if(key==='ArrowUp'||key===38){event.preventDefault();highlight(-1);}
+      else if(key==='Enter'||key===13){var items=menu.querySelectorAll('.combobox-option');if(active>=0&&items[active]){event.preventDefault();items[active].click();}}
+      else if(key==='Escape'||key===27){close();}
+    };
+    input.onblur=function(){setTimeout(close,250);};
+  }
+  var existing=rows.querySelectorAll('.assignment-row');
+  for(var i=0;i<existing.length;i++){initialiseSearch(existing[i]);}
+  add.onclick=function(){
+    var index=parseInt(total.value,10), nextOrder=1, orderFields=rows.querySelectorAll('input[name$="-order_number"]');
+    for(var orderIndex=0;orderIndex<orderFields.length;orderIndex++){
+      var current=parseInt(orderFields[orderIndex].value,10);if(current>=nextOrder){nextOrder=current+1;}
+    }
+    var html=template.innerHTML.replace(/__prefix__/g,index);
+    rows.insertAdjacentHTML('beforeend',html); total.value=index+1;
+    initialiseSearch(rows.lastElementChild);
+    var order=document.getElementById('id_services-'+index+'-order_number');
+    if(order){order.value=nextOrder;}
+  };
+}());
+</script>
+{% endblock %}

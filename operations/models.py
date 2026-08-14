@@ -240,6 +240,15 @@ class Visit(TimeStamped):
     def __str__(self):
         return f"Visit #{self.id} - {self.customer.name} ({self.branch.name})"
 
+    @property
+    def is_invoice_ready(self):
+        active_services = self.services.exclude(status="CANCELLED")
+        return (
+            active_services.exists()
+            and not active_services.exclude(status="VERIFIED").exists()
+            and not Invoice.objects.filter(visit=self, status="COMPLETED").exists()
+        )
+
 
 class VisitService(TimeStamped):
     STATUS = [("ASSIGNED", "Assigned"), ("IN_PROGRESS", "In progress"), ("PAUSED", "Paused"), ("EMPLOYEE_DONE", "Employee completed"), ("VERIFIED", "Manager verified"), ("CANCELLED", "Cancelled")]
@@ -256,10 +265,20 @@ class VisitService(TimeStamped):
     verified_at = models.DateTimeField(null=True, blank=True)
     employee_notes = models.TextField(blank=True)
     manager_notes = models.TextField(blank=True)
+    verified_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="verified_services"
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="cancelled_services"
+    )
+    cancellation_reason = models.CharField(max_length=250, blank=True)
+    replaces = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="replacements"
+    )
 
     class Meta:
         ordering = ["visit_id", "order_number", "id"]
-        unique_together = ("visit", "order_number")
 
     def __str__(self):
         return f"Visit #{self.visit_id} - {self.visit.customer.name} - #{self.order_number} {self.service.name}"
@@ -275,7 +294,7 @@ class VisitService(TimeStamped):
 
 
 class VisitTask(TimeStamped):
-    STATUS = [("PENDING", "Pending"), ("IN_PROGRESS", "In progress"), ("COMPLETED", "Completed"), ("SKIPPED", "Skipped")]
+    STATUS = [("PENDING", "Pending"), ("IN_PROGRESS", "In progress"), ("COMPLETED", "Completed"), ("SKIPPED", "Skipped"), ("CANCELLED", "Cancelled")]
     visit_service = models.ForeignKey(VisitService, on_delete=models.CASCADE, related_name="tasks")
     source_task = models.ForeignKey(SOPTask, on_delete=models.SET_NULL, null=True, blank=True)
     source_operational_task = models.ForeignKey(OperationalTask, on_delete=models.SET_NULL, null=True, blank=True)
@@ -306,11 +325,14 @@ class VisitTask(TimeStamped):
 
 
 class Invoice(TimeStamped):
+    STATUS = [("DRAFT", "Draft"), ("COMPLETED", "Completed"), ("VOID", "Void")]
     visit = models.OneToOneField(Visit, on_delete=models.CASCADE, related_name="invoice")
     invoice_number = models.CharField(max_length=50, unique=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     payment_method = models.CharField(max_length=50, blank=True)
     entered_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    status = models.CharField(max_length=20, choices=STATUS, default="COMPLETED")
+    completed_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.invoice_number} - {self.visit.customer.name} (Visit #{self.visit_id})"

@@ -126,7 +126,7 @@ class VisitAdmin(admin.ModelAdmin):
 
 @admin.register(VisitService)
 class VisitServiceAdmin(admin.ModelAdmin):
-    list_display = ("visit_customer", "service", "order_number", "employee", "chair", "status")
+    list_display = ("visit_customer", "service", "order_number", "employee", "chair", "status", "replaces")
     list_filter = ("visit__branch", "service", "status")
     search_fields = ("visit__customer__name", "visit__customer__mobile", "service__name", "service__code")
     list_select_related = ("visit__customer", "visit__branch", "service", "employee", "chair")
@@ -150,8 +150,8 @@ class VisitTaskAdmin(admin.ModelAdmin):
 
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
-    list_display = ("invoice_number", "visit_customer", "amount", "payment_method", "created_at")
-    list_filter = ("visit__branch", "payment_method", "created_at")
+    list_display = ("invoice_number", "visit_customer", "amount", "status", "completed_at")
+    list_filter = ("visit__branch", "status", "payment_method", "created_at")
     search_fields = ("invoice_number", "visit__customer__name", "visit__customer__mobile")
     list_select_related = ("visit__customer", "visit__branch", "entered_by")
 

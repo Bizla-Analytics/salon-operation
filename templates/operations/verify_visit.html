@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Verify visit · SalonOps{% endblock %}
+{% block content %}
+<header class="page-head split"><div><span class="eyebrow">Quality control</span><h1>Verify {{ visit.customer.name }}’s visit</h1><p>Review services in execution order and approve them together.</p></div><a class="button outline" href="{% url 'manager_dashboard' %}">Back</a></header>
+<form method="post" class="visit-verification">{% csrf_token %}
+  {% for service in services %}
+  <section class="panel verification-service">
+    <header><span class="order-badge">{{ service.order_number }}</span><div><h2>{{ service.service.name }}</h2><p class="muted">{{ service.employee.first_name|default:service.employee.username }} · {{ service.chair|default:'No chair' }}</p></div><span class="status {{ service.status|lower }}">{{ service.get_status_display }}</span></header>
+    <ul class="verify-list">{% for task in service.tasks.all %}<li><span>{{ task.title }}{% if task.skip_reason %}<small class="muted">Skipped: {{ task.skip_reason }}</small>{% endif %}</span><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></li>{% endfor %}</ul>
+    <div class="note-grid"><div><b>Staff completion note</b><p>{{ service.employee_notes|default:'No note supplied.' }}</p></div><div><label for="manager_notes_{{ service.pk }}"><b>Manager verification note</b></label><textarea class="form-control" id="manager_notes_{{ service.pk }}" name="manager_notes_{{ service.pk }}" rows="3">{{ service.manager_notes }}</textarea></div></div>
+  </section>
+  {% endfor %}
+  <div class="verification-actions"><a class="button outline large" href="{% url 'manager_dashboard' %}">Back</a><button class="button success large">Verify all services</button></div>
+</form>
+{% endblock %}

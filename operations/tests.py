@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import InvoiceForm, VisitCreateForm, VisitEditForm
+from .forms import InvoiceForm, VisitCreateForm, VisitServiceFormSet
 from .models import (
     Branch,
     Customer,
@@ -65,6 +65,30 @@ class CombinedServiceWorkflowTests(TestCase):
         build_visit_tasks(visit)
         return visit, first, second
 
+    def test_health_endpoint_checks_database(self):
+        response = self.client.get(reverse("health"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+
+    def assignment_payload(self, first, second, first_order=1, second_order=2, employee=None):
+        employee = employee or self.employee
+        return {
+            "services-TOTAL_FORMS": "2",
+            "services-INITIAL_FORMS": "2",
+            "services-MIN_NUM_FORMS": "0",
+            "services-MAX_NUM_FORMS": "1000",
+            "services-0-id": str(first.pk),
+            "services-0-order_number": str(first_order),
+            "services-0-service": str(first.service_id),
+            "services-0-employee": str(employee.pk),
+            "services-0-chair": "",
+            "services-1-id": str(second.pk),
+            "services-1-order_number": str(second_order),
+            "services-1-service": str(second.service_id),
+            "services-1-employee": str(employee.pk),
+            "services-1-chair": "",
+        }
+
     def test_combined_plan_has_one_sanitisation_then_one_consultation(self):
         visit, first, second = self.create_visit()
         all_tasks = list(visit.services.order_by("order_number").values_list("tasks__title", flat=True))
@@ -85,45 +109,61 @@ class CombinedServiceWorkflowTests(TestCase):
         response = self.client.get(reverse("execute_service", args=[second.pk]))
         self.assertRedirects(response, reverse("employee_dashboard"))
 
-    def test_manager_service_selection_preserves_submitted_order(self):
-        form = VisitCreateForm(
-            data={
-                "customer_name": "Customer",
-                "mobile": "",
-                "services": [self.service_a.pk, self.service_b.pk],
-                "service_order": f"{self.service_b.pk},{self.service_a.pk}",
-                "employee": self.employee.pk,
-                "chair": "",
-            },
-            branch=self.branch,
-        )
+    def test_visit_details_validate_mobile_and_disable_invoice(self):
+        form = VisitCreateForm(data={"customer_name": "Customer", "mobile": "9876543210"})
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["ordered_services"], [self.service_b, self.service_a])
+        self.assertTrue(form.fields["invoice_number"].disabled)
+        invalid = VisitCreateForm(data={"customer_name": "Customer", "mobile": "12345"})
+        self.assertFalse(invalid.is_valid())
 
-    def test_manager_sees_old_phone_compatible_service_picker(self):
+    def test_manager_creates_customer_before_assigning_services(self):
         self.client.force_login(self.manager)
         response = self.client.get(reverse("new_visit"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="service-search"')
-        self.assertContains(response, 'id="service-select"')
+        self.assertContains(response, "Available after verification")
+        response = self.client.post(reverse("new_visit"), {
+            "customer_name": "New Customer", "mobile": "9876543210"
+        })
+        visit = Visit.objects.get(customer__mobile="9876543210")
+        self.assertRedirects(response, reverse("edit_visit_services", args=[visit.pk]))
+
+    def test_login_page_never_renders_the_manager_sidebar(self):
+        page = self.client.get(reverse("login"))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, 'id="app-sidebar"')
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse("login"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("dashboard"))
+
+    def test_assignment_page_has_old_phone_compatible_service_search_and_select(self):
+        visit, _, _ = self.create_visit()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["formset"].total_form_count(), 2)
+        self.assertContains(response, 'class="form-control service-combobox-input"')
+        self.assertContains(response, 'class="service-combobox-menu"')
+        self.assertContains(response, f'value="{self.service_a}"')
+        self.assertContains(response, 'name="services-0-service"')
         self.assertNotContains(response, "<datalist")
-        self.assertContains(response, "works on older company phones")
-        self.assertContains(response, 'id="add-service-first"')
-        self.assertContains(response, 'id="add-service"')
-        self.assertContains(response, 'id="selected-services"')
-        self.assertContains(response, 'class="mobile-signout"')
+
+    def test_empty_assignment_page_only_adds_a_row_when_manager_requests_it(self):
+        visit = Visit.objects.create(
+            branch=self.branch, customer=self.customer, status="WAITING", created_by=self.manager
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["formset"].total_form_count(), 0)
+        self.assertContains(response, "+ Add another service")
 
     def test_manager_can_reorder_services_and_rebuild_pending_plan(self):
         visit, first, second = self.create_visit()
         self.client.force_login(self.manager)
         response = self.client.post(
             reverse("edit_visit_services", args=[visit.pk]),
-            {
-                "services": [self.service_a.pk, self.service_b.pk],
-                "service_order": f"{self.service_b.pk},{self.service_a.pk}",
-                "employee": self.employee.pk,
-                "chair": "",
-            },
+            self.assignment_payload(first, second, first_order=2, second_order=1),
         )
         self.assertRedirects(response, reverse("manager_dashboard"))
         first.refresh_from_db()
@@ -145,21 +185,11 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertEqual([item.pk for item in displayed_services], [second.pk, first.pk])
         self.assertEqual([item.order_number for item in displayed_services], [1, 2])
 
-    def test_visit_edit_form_prefills_existing_assignment_and_order(self):
+    def test_visit_service_formset_prefills_existing_assignments(self):
         visit, _, _ = self.create_visit()
-
-        # This is how the view constructs the form on a GET request.
-        form = VisitEditForm(None, visit=visit, branch=self.branch)
-
-        self.assertEqual(
-            [int(value) for value in form["services"].value()],
-            [self.service_a.pk, self.service_b.pk],
-        )
-        self.assertEqual(
-            form["service_order"].value(),
-            f"{self.service_a.pk},{self.service_b.pk}",
-        )
-        self.assertEqual(form["employee"].value(), self.employee.pk)
+        formset = VisitServiceFormSet(instance=visit, branch=self.branch, prefix="services")
+        self.assertEqual([form.instance.service_id for form in formset.initial_forms], [self.service_a.pk, self.service_b.pk])
+        self.assertEqual([form.instance.employee_id for form in formset.initial_forms], [self.employee.pk, self.employee.pk])
 
     def test_edit_page_contains_previous_services_in_execution_order(self):
         visit, _, _ = self.create_visit()
@@ -168,15 +198,8 @@ class CombinedServiceWorkflowTests(TestCase):
         response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
 
         self.assertEqual(response.status_code, 200)
-        form = response.context["form"]
-        self.assertEqual(
-            [int(value) for value in form["services"].value()],
-            [self.service_a.pk, self.service_b.pk],
-        )
-        self.assertEqual(
-            form["service_order"].value(),
-            f"{self.service_a.pk},{self.service_b.pk}",
-        )
+        formset = response.context["formset"]
+        self.assertEqual([form.instance.service_id for form in formset.initial_forms], [self.service_a.pk, self.service_b.pk])
 
     def test_reassignment_preserves_existing_services_and_order(self):
         visit, first, second = self.create_visit()
@@ -189,12 +212,7 @@ class CombinedServiceWorkflowTests(TestCase):
 
         response = self.client.post(
             reverse("edit_visit_services", args=[visit.pk]),
-            {
-                "services": [self.service_a.pk, self.service_b.pk],
-                "service_order": f"{self.service_a.pk},{self.service_b.pk}",
-                "employee": replacement.pk,
-                "chair": "",
-            },
+            self.assignment_payload(first, second, employee=replacement),
         )
 
         self.assertRedirects(response, reverse("manager_dashboard"))
@@ -213,14 +231,19 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertEqual([job.pk for job in jobs], original_ids)
         self.assertEqual([job.order_number for job in jobs], [1, 2])
 
-    def test_manager_cannot_reorder_after_work_starts(self):
+    def test_manager_locks_started_service_but_can_edit_upcoming_service(self):
         visit, first, _ = self.create_visit()
         task = first.tasks.first()
         task.status = "IN_PROGRESS"
         task.save(update_fields=["status"])
         self.client.force_login(self.manager)
+        first.status = "IN_PROGRESS"
+        first.save(update_fields=["status"])
         response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
-        self.assertRedirects(response, reverse("manager_dashboard"))
+        self.assertEqual(response.status_code, 200)
+        first_form = response.context["formset"].initial_forms[0]
+        self.assertTrue(first_form.fields["service"].disabled)
+        self.assertFalse(response.context["formset"].initial_forms[1].fields["service"].disabled)
 
     def test_other_branch_manager_cannot_edit_visit(self):
         visit, _, _ = self.create_visit()
@@ -339,11 +362,15 @@ class CombinedServiceWorkflowTests(TestCase):
         self.client.force_login(self.manager)
 
         dashboard = self.client.get(reverse("manager_dashboard"))
-        self.assertContains(dashboard, "Complete combined invoice", count=1)
+        self.assertContains(dashboard, "Add invoice", count=1)
 
         invoice_url = reverse("add_invoice", args=[visit.pk])
-        response = self.client.post(invoice_url, {"invoice_number": "INV-COMBINED-1"})
-        self.assertEqual(response.status_code, 200)
+        response = self.client.post(invoice_url, {
+            "customer_name": self.customer.name,
+            "mobile": "9876543210",
+            "invoice_number": "INV-COMBINED-1",
+        })
+        self.assertRedirects(response, reverse("manager_dashboard"))
         self.assertEqual(Invoice.objects.filter(visit=visit).count(), 1)
         self.assertEqual(Feedback.objects.filter(visit=visit).count(), 1)
         self.assertEqual(
@@ -351,10 +378,79 @@ class CombinedServiceWorkflowTests(TestCase):
             self.service_a.base_price + self.service_b.base_price,
         )
 
-        response = self.client.post(invoice_url, {"invoice_number": "INV-COMBINED-2"})
-        self.assertEqual(response.status_code, 200)
+        response = self.client.post(invoice_url, {
+            "customer_name": self.customer.name,
+            "mobile": "9876543210",
+            "invoice_number": "INV-COMBINED-2",
+        })
+        self.assertRedirects(response, reverse("manager_dashboard"))
         self.assertEqual(Invoice.objects.filter(visit=visit).count(), 1)
         self.assertEqual(Feedback.objects.filter(visit=visit).count(), 1)
+
+    def test_visit_level_verify_page_lists_services_in_order_and_verifies_all(self):
+        visit, first, second = self.create_visit()
+        for item in [first, second]:
+            item.tasks.update(status="COMPLETED")
+            item.status = "EMPLOYEE_DONE"
+            item.employee_notes = f"Note from {item.service.name}"
+            item.save(update_fields=["status", "employee_notes"])
+        visit.status = "EMPLOYEE_DONE"
+        visit.save(update_fields=["status"])
+        self.client.force_login(self.manager)
+        page = self.client.get(reverse("verify_visit", args=[visit.pk]))
+        self.assertContains(page, self.service_a.name)
+        self.assertContains(page, self.service_b.name)
+        self.assertContains(page, "Verify all services")
+        response = self.client.post(reverse("verify_visit", args=[visit.pk]), {
+            f"manager_notes_{first.pk}": "Checked first",
+            f"manager_notes_{second.pk}": "Checked second",
+        })
+        self.assertRedirects(response, reverse("manager_dashboard"))
+        self.assertFalse(visit.services.exclude(status="CANCELLED").exclude(status="VERIFIED").exists())
+
+    def test_started_service_can_be_cancelled_and_reassigned_without_deleting_history(self):
+        visit, first, _ = self.create_visit()
+        old_task = first.tasks.first()
+        old_task.status = "IN_PROGRESS"
+        old_task.save(update_fields=["status"])
+        first.status = "IN_PROGRESS"
+        first.save(update_fields=["status"])
+        replacement_staff = User.objects.create_user("replacement-active", password="test")
+        replacement_staff.profile.role = "EMPLOYEE"
+        replacement_staff.profile.branch = self.branch
+        replacement_staff.profile.save()
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse("cancel_and_reassign_service", args=[first.pk]), {
+            "cancellation_reason": "Started accidentally",
+            "employee": replacement_staff.pk,
+            "chair": "",
+        })
+        self.assertRedirects(response, reverse("manager_dashboard"))
+        first.refresh_from_db()
+        old_task.refresh_from_db()
+        replacement = VisitService.objects.get(replaces=first)
+        self.assertEqual(first.status, "CANCELLED")
+        self.assertEqual(old_task.status, "CANCELLED")
+        self.assertEqual(replacement.employee, replacement_staff)
+        self.assertTrue(replacement.tasks.exists())
+        replacement_titles = list(replacement.tasks.order_by("sequence").values_list("title", flat=True))
+        self.assertEqual(replacement_titles[:2], ["Sanitisation", "Client Consultation"])
+
+    def test_manager_feedback_back_keeps_visit_open_and_submit_closes_it(self):
+        visit, first, second = self.create_visit()
+        first.status = second.status = "VERIFIED"
+        first.save(update_fields=["status"]); second.save(update_fields=["status"])
+        visit.status = "INVOICED"; visit.save(update_fields=["status"])
+        Invoice.objects.create(visit=visit, invoice_number="FB-1", entered_by=self.manager)
+        self.client.force_login(self.manager)
+        url = reverse("collect_feedback", args=[visit.pk])
+        page = self.client.get(url)
+        self.assertContains(page, "Back to overview")
+        visit.refresh_from_db(); self.assertEqual(visit.status, "INVOICED")
+        payload = {f"q_{question.pk}": "5" for question in FeedbackQuestion.objects.filter(active=True)}
+        response = self.client.post(url, payload)
+        self.assertRedirects(response, reverse("manager_dashboard"))
+        visit.refresh_from_db(); self.assertEqual(visit.status, "CLOSED")
 
     def test_default_feedback_questions_are_bilingual(self):
         questions = list(FeedbackQuestion.objects.filter(active=True).order_by("sequence"))
