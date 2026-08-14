@@ -127,6 +127,16 @@ VisitServiceFormSet = inlineformset_factory(
     can_delete=True,
 )
 
+InitialVisitServiceFormSet = inlineformset_factory(
+    Visit,
+    VisitService,
+    form=VisitServiceAssignmentForm,
+    formset=BaseVisitServiceFormSet,
+    fields=["order_number", "service", "employee", "chair"],
+    extra=1,
+    can_delete=True,
+)
+
 
 class CancelAndReassignForm(BootstrapMixin, forms.Form):
     cancellation_reason = forms.CharField(max_length=250, widget=forms.Textarea(attrs={"rows": 3}))

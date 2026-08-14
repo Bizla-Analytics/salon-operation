@@ -298,17 +298,18 @@ def edit_visit_services(request, visit_id):
         messages.error(request, "Assignments cannot be changed after visit verification.")
         return redirect("manager_dashboard")
 
-    formset = VisitServiceFormSet(
+    formset_class = (
+        InitialVisitServiceFormSet
+        if request.method == 'GET' and not visit.services.exists()
+        else VisitServiceFormSet
+    )
+    formset = formset_class(
         request.POST or None,
         instance=visit,
         branch=branch,
         queryset=visit.services.exclude(status='CANCELLED').order_by('order_number', 'id'),
         prefix='services',
     )
-    # A brand-new visit starts with one convenient assignment row. Existing
-    # visits never receive an unsolicited blank row when reopened.
-    if request.method == 'GET' and not visit.services.exists():
-        formset.extra = 1
     if request.method == "POST" and formset.is_valid():
         with transaction.atomic():
             changed_service_ids = set()

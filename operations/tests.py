@@ -156,6 +156,8 @@ class CombinedServiceWorkflowTests(TestCase):
         response = self.client.get(reverse("edit_visit_services", args=[visit.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["formset"].total_form_count(), 1)
+        self.assertContains(response, 'id="id_services-0-order_number"')
+        self.assertContains(response, 'id="id_services-0-service"')
         self.assertContains(response, "+ Add another service")
 
         assigned_visit, _, _ = self.create_visit()
