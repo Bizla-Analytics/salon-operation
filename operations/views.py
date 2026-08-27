@@ -13,7 +13,13 @@ from django.views.decorators.http import require_POST
 from .models import *
 from .forms import *
 from .decorators import roles_required
-from .workflow import CONSULTATION_CODE, SANITISATION_CODE, build_visit_tasks, rebuild_service_tasks
+from .workflow import (
+    CONSULTATION_CODE,
+    OPENING_TASK_TYPES,
+    SANITISATION_CODE,
+    build_visit_tasks,
+    rebuild_service_tasks,
+)
 
 def user_branch(user): return getattr(getattr(user,'profile',None),'branch',None)
 
@@ -50,8 +56,14 @@ def admin_reports(request):
         total=Count('id'),
         completed=Count('id', filter=Q(status='COMPLETED')),
         skipped=Count('id', filter=Q(status='SKIPPED')),
-        labour_minutes=Sum('active_labour_minutes'),
-        passive_minutes=Sum('passive_time_minutes'),
+        labour_minutes=Sum(
+            'active_labour_minutes',
+            filter=~Q(task_type__in=OPENING_TASK_TYPES),
+        ),
+        passive_minutes=Sum(
+            'passive_time_minutes',
+            filter=~Q(task_type__in=OPENING_TASK_TYPES),
+        ),
     )
     summary = {
         'visits': visits.count(),
@@ -93,8 +105,14 @@ def admin_reports(request):
             filter=Q(visitservice__status__in=['EMPLOYEE_DONE', 'VERIFIED']),
             distinct=True,
         ),
-        labour_minutes=Sum('visitservice__tasks__active_labour_minutes'),
-        passive_minutes=Sum('visitservice__tasks__passive_time_minutes'),
+        labour_minutes=Sum(
+            'visitservice__tasks__active_labour_minutes',
+            filter=~Q(visitservice__tasks__task_type__in=OPENING_TASK_TYPES),
+        ),
+        passive_minutes=Sum(
+            'visitservice__tasks__passive_time_minutes',
+            filter=~Q(visitservice__tasks__task_type__in=OPENING_TASK_TYPES),
+        ),
     ).order_by('-visit_count', 'name')
     status_rows = visits.values('status').annotate(total=Count('id')).order_by('status')
     rating_rows = FeedbackAnswer.objects.values('rating').annotate(total=Count('id')).order_by('rating')
@@ -130,6 +148,7 @@ def admin_visits(request):
                 queryset=VisitTask.objects.only(
                     'visit_service_id',
                     'status',
+                    'task_type',
                     'started_at',
                     'completed_at',
                 ),
@@ -179,7 +198,12 @@ def admin_visits(request):
             for item in visit_services
             if item.status in ['EMPLOYEE_DONE', 'VERIFIED']
             for task in item.tasks.all()
-            if task.status == 'COMPLETED' and task.started_at and task.completed_at
+            if (
+                task.task_type not in OPENING_TASK_TYPES
+                and task.status == 'COMPLETED'
+                and task.started_at
+                and task.completed_at
+            )
         )
         total_minutes = int((total_seconds / 60) + 0.5)
         hours, minutes = divmod(total_minutes, 60)
@@ -205,10 +229,6 @@ def service_catalog(request):
         selected=form.cleaned_data['service']
         mapped=list(selected.service_details.filter(active=True,sub_service__active=True).select_related('sub_service').order_by('sequence','id'))
         ordered=[]
-        consultation=SubService.objects.filter(code=CONSULTATION_CODE,active=True).first()
-        sanitisation=SubService.objects.filter(code=SANITISATION_CODE,active=True).first()
-        if sanitisation: ordered.append((sanitisation,True))
-        if consultation: ordered.append((consultation,True))
         ordered.extend((detail.sub_service,detail.mandatory) for detail in mapped if detail.sub_service.code not in [CONSULTATION_CODE,SANITISATION_CODE])
         for sub_service,mandatory in ordered:
             task_rows=[]
@@ -386,6 +406,27 @@ def verify_visit(request, visit_id):
         messages.error(request, 'This visit can no longer be verified.')
         return redirect('manager_dashboard')
     active_services = [item for item in visit.services.all() if item.status != 'CANCELLED']
+    for service in active_services:
+        if service.started_at and service.employee_completed_at:
+            elapsed_seconds = max(
+                (service.employee_completed_at - service.started_at).total_seconds(), 0
+            )
+            service.elapsed_time = _format_elapsed_time(elapsed_seconds)
+        else:
+            service.elapsed_time = None
+        for task in service.tasks.all():
+            # Opening confirmations are intentionally untimed. Skipped tasks also
+            # do not contribute a duration, even if they happened to be started.
+            if (
+                task.task_type not in OPENING_TASK_TYPES
+                and task.status == 'COMPLETED'
+                and task.started_at
+                and task.completed_at
+            ):
+                elapsed_seconds = max((task.completed_at - task.started_at).total_seconds(), 0)
+                task.elapsed_time = _format_elapsed_time(elapsed_seconds)
+            else:
+                task.elapsed_time = None
     if request.method == 'POST':
         with transaction.atomic():
             locked_visit = Visit.objects.select_for_update().get(pk=visit.pk)
@@ -411,6 +452,16 @@ def verify_visit(request, visit_id):
         messages.success(request, 'All services verified. The invoice can now be added.')
         return redirect('manager_dashboard')
     return render(request, 'operations/verify_visit.html', {'visit': visit, 'services': active_services})
+
+
+def _format_elapsed_time(total_seconds):
+    total_minutes = int((total_seconds / 60) + 0.5)
+    hours, minutes = divmod(total_minutes, 60)
+    if hours and minutes:
+        return f"{hours} hour{'s' if hours != 1 else ''} {minutes} minute{'s' if minutes != 1 else ''}"
+    if hours:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return f"{minutes} minute{'s' if minutes != 1 else ''}"
 
 
 @roles_required('MANAGER')
@@ -533,6 +584,12 @@ def collect_feedback(request, visit_id):
     feedback, _ = Feedback.objects.get_or_create(visit=visit)
     questions = FeedbackQuestion.objects.filter(active=True)
     if request.method == 'POST':
+        if request.POST.get('action') == 'close_visit':
+            visit.status = 'CLOSED'
+            visit.closed_at = timezone.now()
+            visit.save(update_fields=['status', 'closed_at', 'updated_at'])
+            messages.success(request, 'Visit closed without collecting feedback.')
+            return redirect('manager_dashboard')
         with transaction.atomic():
             if not _save_feedback(request, feedback, questions):
                 messages.error(request, 'Please answer every feedback question.')
@@ -552,6 +609,19 @@ def employee_dashboard(request):
         .order_by('visit__created_at','visit_id','order_number','id'))
     return render(request,'operations/employee_dashboard.html',{'jobs':jobs})
 
+
+def _pending_opening_task(visit):
+    return (
+        VisitTask.objects.filter(
+            visit_service__visit=visit,
+            task_type__in=OPENING_TASK_TYPES,
+        )
+        .exclude(status__in=['COMPLETED', 'SKIPPED', 'CANCELLED'])
+        .order_by('visit_service__order_number', 'sequence', 'id')
+        .first()
+    )
+
+
 @roles_required('EMPLOYEE')
 def execute_service(request,pk):
     vs=get_object_or_404(VisitService,pk=pk,employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
@@ -559,7 +629,17 @@ def execute_service(request,pk):
         messages.error(request,'Complete the earlier service in this visit first.')
         return redirect('employee_dashboard')
     current=vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).first()
-    return render(request,'operations/execute.html',{'vs':vs,'current':current,'tasks':vs.tasks.all()})
+    opening_tasks = vs.tasks.filter(task_type__in=OPENING_TASK_TYPES)
+    opening_current = _pending_opening_task(vs.visit)
+    service_tasks = vs.tasks.exclude(task_type__in=OPENING_TASK_TYPES)
+    return render(request,'operations/execute.html',{
+        'vs':vs,
+        'current':current,
+        'opening_tasks':opening_tasks,
+        'opening_current':opening_current,
+        'service_tasks':service_tasks,
+        'service_actions_locked':opening_current is not None,
+    })
 
 @roles_required('EMPLOYEE')
 @require_POST
@@ -571,6 +651,29 @@ def task_action(request,pk,action):
     reason_choice=request.POST.get('skip_reason_choice','').strip()
     reason_other=request.POST.get('skip_reason_other','').strip()
     reason=reason_other if reason_choice=='OTHER' else reason_choice
+    opening_current = _pending_opening_task(vs.visit)
+    if action == 'confirm':
+        if task.task_type not in OPENING_TASK_TYPES:
+            messages.error(request, 'Only visit opening checks can be confirmed.')
+            return redirect('execute_service', pk=vs.pk)
+        if opening_current is None or task.pk != opening_current.pk:
+            messages.error(request, 'Confirm the visit opening checks in order.')
+            return redirect('execute_service', pk=vs.pk)
+        task.status = 'COMPLETED'
+        task.started_at = None
+        task.completed_at = now
+        task.note = note
+        task.performed_by = request.user
+        task.save(update_fields=[
+            'status', 'started_at', 'completed_at', 'note', 'performed_by', 'updated_at'
+        ])
+        return redirect('execute_service', pk=vs.pk)
+    if task.task_type in OPENING_TASK_TYPES:
+        messages.error(request, 'Use Confirm for visit opening checks; they are not timed.')
+        return redirect('execute_service', pk=vs.pk)
+    if opening_current is not None:
+        messages.error(request, 'Confirm sanitisation and consultation before starting service work.')
+        return redirect('execute_service', pk=vs.pk)
     if action=='start':
         if task.status!='PENDING': return redirect('execute_service',pk=vs.pk)
         task.status='IN_PROGRESS'; task.started_at=task.started_at or now
@@ -583,6 +686,9 @@ def task_action(request,pk,action):
         if not task.can_skip: messages.error(request,'This task cannot be skipped.'); return redirect('execute_service',pk=vs.pk)
         if task.skip_reason_required and not reason: messages.error(request,'Please give a short skip reason.'); return redirect('execute_service',pk=vs.pk)
         task.status='SKIPPED'; task.skip_reason=reason; task.completed_at=now
+    else:
+        messages.error(request, 'Unknown task action.')
+        return redirect('execute_service', pk=vs.pk)
     task.note=note; task.performed_by=request.user; task.save(); vs.save()
     return redirect('execute_service',pk=vs.pk)
 

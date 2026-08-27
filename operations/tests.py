@@ -177,6 +177,46 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertNotContains(response, task.instructions)
         self.assertNotContains(response, task.get_phase_display())
 
+    def test_opening_checks_use_ordered_one_click_confirmation_without_timing(self):
+        visit, first, _ = self.create_visit()
+        sanitisation, consultation, procedure = list(first.tasks.order_by("sequence"))
+        self.client.force_login(self.employee)
+
+        page = self.client.get(reverse("execute_service", args=[first.pk]))
+        self.assertContains(page, "Visit opening checks")
+        self.assertContains(page, "Confirm each check without starting a timer.")
+        self.assertContains(page, reverse("task_action", args=[sanitisation.pk, "confirm"]))
+        self.assertNotContains(page, reverse("task_action", args=[sanitisation.pk, "start"]))
+
+        self.client.post(reverse("task_action", args=[consultation.pk, "confirm"]))
+        consultation.refresh_from_db()
+        self.assertEqual(consultation.status, "PENDING")
+
+        self.client.post(reverse("task_action", args=[procedure.pk, "start"]))
+        procedure.refresh_from_db()
+        self.assertEqual(procedure.status, "PENDING")
+
+        self.client.post(reverse("task_action", args=[sanitisation.pk, "confirm"]))
+        sanitisation.refresh_from_db()
+        first.refresh_from_db()
+        visit.refresh_from_db()
+        self.assertEqual(sanitisation.status, "COMPLETED")
+        self.assertIsNone(sanitisation.started_at)
+        self.assertIsNotNone(sanitisation.completed_at)
+        self.assertEqual(sanitisation.performed_by, self.employee)
+        self.assertEqual(first.status, "ASSIGNED")
+        self.assertEqual(visit.status, "ASSIGNED")
+
+        self.client.post(reverse("task_action", args=[consultation.pk, "confirm"]))
+        self.client.post(reverse("task_action", args=[procedure.pk, "start"]))
+        consultation.refresh_from_db()
+        procedure.refresh_from_db()
+        first.refresh_from_db()
+        self.assertEqual(consultation.status, "COMPLETED")
+        self.assertIsNone(consultation.started_at)
+        self.assertEqual(procedure.status, "IN_PROGRESS")
+        self.assertEqual(first.status, "IN_PROGRESS")
+
     def test_manager_can_reorder_services_and_rebuild_pending_plan(self):
         visit, first, second = self.create_visit()
         self.client.force_login(self.manager)
@@ -280,12 +320,19 @@ class CombinedServiceWorkflowTests(TestCase):
         self.client.force_login(admin)
         response = self.client.get(reverse("service_catalog"), {"service": self.service_a.pk})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Client Consultation")
-        self.assertContains(response, "Sanitisation")
+        self.assertContains(response, "First procedure")
+        self.assertNotContains(response, "Client Consultation")
+        self.assertNotContains(response, "Sanitisation")
 
     def test_admin_visit_explorer_searches_and_filters_visit_cards(self):
         visit, _, _ = self.create_visit()
-        timed_task = visit.services.order_by("order_number").first().tasks.first()
+        first_service = visit.services.order_by("order_number").first()
+        opening_task = first_service.tasks.filter(task_type="HYGIENE").get()
+        opening_task.status = "COMPLETED"
+        opening_task.started_at = timezone.now() - timedelta(minutes=60)
+        opening_task.completed_at = timezone.now()
+        opening_task.save(update_fields=["status", "started_at", "completed_at"])
+        timed_task = first_service.tasks.filter(task_type="SERVICE").get()
         timed_task.status = "COMPLETED"
         timed_task.started_at = timezone.now() - timedelta(minutes=100)
         timed_task.completed_at = timezone.now()
@@ -311,7 +358,6 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertNotContains(response, "<small>Token</small>", html=True)
         self.assertNotContains(response, "<small>Invoice</small>", html=True)
 
-        first_service = visit.services.order_by("order_number").first()
         first_service.status = "EMPLOYEE_DONE"
         first_service.save(update_fields=["status"])
         response = self.client.get(reverse("admin_visits"), {"q": self.customer.name})
@@ -340,6 +386,27 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertContains(response, "Branch performance")
         self.assertContains(response, "Service performance")
         self.assertContains(response, "Great visit")
+
+    def test_admin_reports_exclude_visit_opening_checks_from_service_time(self):
+        _, first, _ = self.create_visit()
+        opening = first.tasks.filter(task_type="HYGIENE").get()
+        opening.active_labour_minutes = 30
+        opening.passive_time_minutes = 5
+        opening.save(update_fields=["active_labour_minutes", "passive_time_minutes"])
+        procedure = first.tasks.filter(task_type="SERVICE").get()
+        procedure.active_labour_minutes = 40
+        procedure.passive_time_minutes = 7
+        procedure.save(update_fields=["active_labour_minutes", "passive_time_minutes"])
+        admin = User.objects.create_superuser("time-admin", "time-admin@example.com", "test")
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse("admin_reports"))
+
+        self.assertEqual(response.context["task_summary"]["labour_minutes"], 40)
+        self.assertEqual(response.context["task_summary"]["passive_minutes"], 7)
+        service_row = next(row for row in response.context["service_rows"] if row.pk == self.service_a.pk)
+        self.assertEqual(service_row.labour_minutes, 40)
+        self.assertEqual(service_row.passive_minutes, 7)
 
     def test_visit_related_labels_include_customer_and_visit(self):
         visit, first, _ = self.create_visit()
@@ -427,6 +494,39 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertRedirects(response, reverse("manager_dashboard"))
         self.assertFalse(visit.services.exclude(status="CANCELLED").exclude(status="VERIFIED").exists())
 
+    def test_manager_verification_shows_only_timed_completed_task_durations(self):
+        visit, first, second = self.create_visit()
+        now = timezone.now()
+        first.started_at = now - timedelta(minutes=30)
+        first.employee_completed_at = now
+        first.status = "EMPLOYEE_DONE"
+        first.save(update_fields=["started_at", "employee_completed_at", "status"])
+        second.status = "EMPLOYEE_DONE"
+        second.employee_completed_at = now
+        second.save(update_fields=["status", "employee_completed_at"])
+
+        opening_tasks = first.tasks.filter(task_type__in=["HYGIENE", "CONSULT"])
+        opening_tasks.update(status="COMPLETED", completed_at=now)
+        timed_task = first.tasks.get(task_type="SERVICE")
+        timed_task.status = "COMPLETED"
+        timed_task.started_at = now - timedelta(minutes=12)
+        timed_task.completed_at = now
+        timed_task.save(update_fields=["status", "started_at", "completed_at"])
+        skipped_task = second.tasks.get()
+        skipped_task.status = "SKIPPED"
+        skipped_task.started_at = now - timedelta(minutes=45)
+        skipped_task.completed_at = now
+        skipped_task.skip_reason = "Customer declined"
+        skipped_task.save(update_fields=["status", "started_at", "completed_at", "skip_reason"])
+
+        self.client.force_login(self.manager)
+        page = self.client.get(reverse("verify_visit", args=[visit.pk]))
+
+        self.assertContains(page, "Service completed:")
+        self.assertContains(page, "30 minutes total")
+        self.assertContains(page, "12 minutes")
+        self.assertNotContains(page, "45 minutes")
+
     def test_started_service_can_be_cancelled_and_reassigned_without_deleting_history(self):
         visit, first, _ = self.create_visit()
         old_task = first.tasks.first()
@@ -470,6 +570,29 @@ class CombinedServiceWorkflowTests(TestCase):
         response = self.client.post(url, payload)
         self.assertRedirects(response, reverse("manager_dashboard"))
         visit.refresh_from_db(); self.assertEqual(visit.status, "CLOSED")
+
+    def test_manager_can_close_visit_from_feedback_page_without_answers(self):
+        visit, first, second = self.create_visit()
+        first.status = second.status = "VERIFIED"
+        first.save(update_fields=["status"]); second.save(update_fields=["status"])
+        visit.status = "INVOICED"; visit.save(update_fields=["status"])
+        Invoice.objects.create(visit=visit, invoice_number="FB-CLOSE-1", entered_by=self.manager)
+        self.client.force_login(self.manager)
+        url = reverse("collect_feedback", args=[visit.pk])
+
+        page = self.client.get(url)
+        self.assertContains(page, "Close without feedback")
+        response = self.client.post(url, {"action": "close_visit"})
+
+        self.assertRedirects(response, reverse("manager_dashboard"))
+        visit.refresh_from_db()
+        self.assertEqual(visit.status, "CLOSED")
+        self.assertIsNotNone(visit.closed_at)
+        feedback = Feedback.objects.get(visit=visit)
+        self.assertIsNone(feedback.submitted_at)
+        self.assertFalse(feedback.answers.exists())
+        dashboard = self.client.get(reverse("manager_dashboard"))
+        self.assertFalse(dashboard.context["visits"].filter(pk=visit.pk).exists())
 
     def test_default_feedback_questions_are_bilingual(self):
         questions = list(FeedbackQuestion.objects.filter(active=True).order_by("sequence"))

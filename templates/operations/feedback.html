@@ -27,7 +27,7 @@
       <label>Suggestion (optional)</label>
       <textarea name="suggestion" class="form-control" rows="3" placeholder="Tell us what would make your next visit even better"></textarea>
     </p>
-    {% if manager_collection %}<div class="verification-actions"><a class="button outline large" href="{% url 'manager_dashboard' %}">Back to overview</a><button class="button primary large">Complete feedback</button></div>{% else %}<button class="button primary large block">Submit feedback</button>{% endif %}
+    {% if manager_collection %}<div class="verification-actions"><a class="button outline large" href="{% url 'manager_dashboard' %}">Back to overview</a><button class="button dark large" type="submit" name="action" value="close_visit" formnovalidate onclick="return confirm('Close this visit without collecting feedback?');">Close without feedback</button><button class="button primary large" type="submit" name="action" value="save_feedback">Complete feedback</button></div>{% else %}<button class="button primary large block">Submit feedback</button>{% endif %}
   </form>
 </div>
 {% endblock %}

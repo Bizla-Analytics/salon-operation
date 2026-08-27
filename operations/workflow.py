@@ -3,6 +3,7 @@ from .models import SubService, VisitTask
 
 CONSULTATION_CODE = "SUB001"
 SANITISATION_CODE = "SUB025"
+OPENING_TASK_TYPES = ("HYGIENE", "CONSULT")
 
 
 def _task_type(sub_service_code):
