@@ -31,13 +31,22 @@
     {% for task in service_tasks %}
     <article class="task-item {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}task-finished{% elif task.status == 'IN_PROGRESS' %}task-active{% endif %}">
       <header><div><h2><span class="task-number">{{ forloop.counter }}</span>{{ task.title }}</h2></div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></header>
+      {% if task.staff_instructions %}<p class="muted">{{ task.staff_instructions }}</p>{% endif %}
+      {% if task.supports_waiting and task.started_at %}<p class="muted">Hands-on: <span data-elapsed="{{ task.labour_seconds }}" {% if task.status == 'IN_PROGRESS' %}data-running="true"{% endif %}></span> · Waiting: <span data-elapsed="{{ task.waiting_seconds }}" {% if task.status == 'WAITING' %}data-running="true"{% endif %}></span></p>{% endif %}
       {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}
       <div class="finished-note">{% if task.status == 'COMPLETED' %}✓ Completed{% else %}Skipped{% if task.skip_reason %}: {{ task.skip_reason }}{% endif %}{% endif %}</div>
       {% else %}
       <div class="task-actions">
+        {% if task.supports_waiting %}
+        {% if task.status == 'PENDING' %}<form method="post" action="{% url 'task_action' task.id 'start' %}">{% csrf_token %}<button class="task-button start" {% if service_actions_locked %}disabled{% endif %}>Start</button></form>
+        {% elif task.status == 'WAITING' %}<form method="post" action="{% url 'task_action' task.id 'resume' %}">{% csrf_token %}<button class="task-button start">Resume</button></form><span class="muted">Processing / setting. Resume when you return; then complete after removal and finishing.</span>
+        {% elif task.status == 'IN_PROGRESS' %}<form method="post" action="{% url 'task_action' task.id 'wait' %}">{% csrf_token %}<button class="task-button start">Start Waiting</button></form><form method="post" action="{% url 'task_action' task.id 'complete' %}">{% csrf_token %}<button class="task-button complete">Complete</button></form>
+        {% endif %}
+        {% else %}
         <form method="post" action="{% url 'task_action' task.id 'start' %}">{% csrf_token %}<button class="task-button start {% if task.status == 'IN_PROGRESS' %}pressed{% endif %}" {% if service_actions_locked or task.status == 'IN_PROGRESS' %}disabled{% endif %}>{% if task.status == 'IN_PROGRESS' %}Started{% else %}Start{% endif %}</button></form>
         <form method="post" action="{% url 'task_action' task.id 'complete' %}">{% csrf_token %}<button class="task-button complete" {% if service_actions_locked or task.status != 'IN_PROGRESS' %}disabled{% endif %}>Complete</button></form>
-        {% if task.can_skip %}<button type="button" class="task-button skip" data-skip-toggle="skip-{{ task.id }}" {% if service_actions_locked %}disabled{% endif %}>Skip</button>{% else %}<button type="button" class="task-button skip" disabled>Cannot skip</button>{% endif %}
+        {% endif %}
+        {% if task.can_skip and task.status == 'PENDING' %}<button type="button" class="task-button skip" data-skip-toggle="skip-{{ task.id }}" {% if service_actions_locked %}disabled{% endif %}>Skip</button>{% endif %}
       </div>
       {% if task.can_skip %}
       <form method="post" action="{% url 'task_action' task.id 'skip' %}" class="skip-panel" id="skip-{{ task.id }}" hidden>{% csrf_token %}
@@ -60,5 +69,6 @@
 
   {% if not current %}<section class="panel finish-service"><h2>All tasks finished</h2><p class="muted">Send the completed service to your manager for verification.</p><form method="post" action="{% url 'finish_service' vs.id %}" class="form-grid">{% csrf_token %}<textarea name="employee_notes" class="form-control" rows="2" placeholder="Optional final note"></textarea><button class="button success large">Submit to manager</button></form></section>{% endif %}
 </div>
+<script>(function(){var began=Date.now();function tick(){document.querySelectorAll('[data-elapsed]').forEach(function(el){var s=Number(el.dataset.elapsed)+(el.dataset.running?Math.floor((Date.now()-began)/1000):0);el.textContent=Math.floor(s/60)+'m '+(s%60)+'s';});}tick();setInterval(tick,1000);})();</script>
 <script>document.addEventListener('click',function(e){let open=e.target.dataset.skipToggle,cancel=e.target.dataset.skipCancel;if(open)document.getElementById(open).hidden=false;if(cancel)document.getElementById(cancel).hidden=true});document.querySelectorAll('.skip-reason').forEach(function(select){select.addEventListener('change',function(){let other=this.closest('.skip-panel').querySelector('.other-reason');other.hidden=this.value!=='OTHER';other.required=this.value==='OTHER';if(!other.required)other.value=''})});</script>
 {% endblock %}

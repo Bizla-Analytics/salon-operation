@@ -11,4 +11,12 @@ media
 data
 backups
 exports
+.local-backups
+.deploy
+output
+outputs
+.codex
+*.xlsx
+*.xlsm
+*.sql.gz
 

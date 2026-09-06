@@ -38,6 +38,7 @@ backups/
 .deploy/
 *.sql.gz
 exports/
+outputs/
 
 # Editors and operating systems
 .vscode/

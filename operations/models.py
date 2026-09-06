@@ -116,6 +116,8 @@ class OperationalTask(TimeStamped):
     employee_role = models.CharField(max_length=100, blank=True)
     active_labour_minutes = models.PositiveIntegerField(default=0)
     passive_time_minutes = models.PositiveIntegerField(default=0)
+    supports_waiting = models.BooleanField(default=False)
+    staff_instructions = models.TextField(blank=True)
     required_skill = models.CharField(max_length=100, blank=True)
     allowed_staff_type = models.CharField(max_length=120, blank=True)
     default_customer_type = models.CharField(max_length=30, blank=True)
@@ -294,7 +296,7 @@ class VisitService(TimeStamped):
 
 
 class VisitTask(TimeStamped):
-    STATUS = [("PENDING", "Pending"), ("IN_PROGRESS", "In progress"), ("COMPLETED", "Completed"), ("SKIPPED", "Skipped"), ("CANCELLED", "Cancelled")]
+    STATUS = [("PENDING", "Pending"), ("IN_PROGRESS", "In progress"), ("WAITING", "Processing / setting"), ("COMPLETED", "Completed"), ("SKIPPED", "Skipped"), ("CANCELLED", "Cancelled")]
     visit_service = models.ForeignKey(VisitService, on_delete=models.CASCADE, related_name="tasks")
     source_task = models.ForeignKey(SOPTask, on_delete=models.SET_NULL, null=True, blank=True)
     source_operational_task = models.ForeignKey(OperationalTask, on_delete=models.SET_NULL, null=True, blank=True)
@@ -306,6 +308,8 @@ class VisitTask(TimeStamped):
     instructions = models.TextField(blank=True)
     active_labour_minutes = models.PositiveIntegerField(default=0)
     passive_time_minutes = models.PositiveIntegerField(default=0)
+    supports_waiting = models.BooleanField(default=False)
+    staff_instructions = models.TextField(blank=True)
     required = models.BooleanField(default=True)
     can_skip = models.BooleanField(default=False)
     skip_reason_required = models.BooleanField(default=True)
@@ -322,6 +326,31 @@ class VisitTask(TimeStamped):
 
     def __str__(self):
         return f"Visit #{self.visit_service.visit_id} - {self.visit_service.visit.customer.name} - {self.title}"
+
+    def measured_seconds(self, kind):
+        now = timezone.now()
+        return int(sum(max(((s.ended_at or now) - s.started_at).total_seconds(), 0)
+                       for s in self.timing_segments.all() if s.kind == kind))
+
+    @property
+    def labour_seconds(self):
+        return self.measured_seconds("ACTIVE")
+
+    @property
+    def waiting_seconds(self):
+        return self.measured_seconds("WAITING")
+
+
+class TaskTimingSegment(models.Model):
+    """Actual measured intervals, independent of workbook standard minutes."""
+    task = models.ForeignKey(VisitTask, on_delete=models.CASCADE, related_name="timing_segments")
+    kind = models.CharField(max_length=10, choices=[("ACTIVE", "Hands-on"), ("WAITING", "Waiting")])
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["started_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["task"], condition=models.Q(ended_at__isnull=True), name="one_open_task_timing_segment")]
 
 
 class Invoice(TimeStamped):

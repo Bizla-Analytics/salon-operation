@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .models import *
 from .forms import *
+from .timing import adopt_legacy_active_segment, close_segment, start_segment
 from .decorators import roles_required
 from .workflow import (
     CONSULTATION_CODE,
@@ -396,7 +397,7 @@ def verify_visit(request, visit_id):
             Prefetch(
                 'services',
                 queryset=VisitService.objects.select_related('service', 'employee', 'chair')
-                .prefetch_related('tasks').order_by('order_number', 'id'),
+                .prefetch_related('tasks__timing_segments').order_by('order_number', 'id'),
             )
         ),
         pk=visit_id,
@@ -480,6 +481,7 @@ def cancel_and_reassign_service(request, pk):
     )
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
+            User.objects.select_for_update().get(pk=service.employee_id)
             old = VisitService.objects.select_for_update().get(pk=service.pk)
             if old.status not in ['ASSIGNED', 'IN_PROGRESS', 'PAUSED']:
                 messages.error(request, 'This service can no longer be reassigned.')
@@ -490,7 +492,12 @@ def cancel_and_reassign_service(request, pk):
             old.cancelled_by = request.user
             old.cancellation_reason = form.cleaned_data['cancellation_reason']
             old.save(update_fields=['status', 'cancelled_at', 'cancelled_by', 'cancellation_reason', 'updated_at'])
-            old.tasks.filter(status__in=['PENDING', 'IN_PROGRESS']).update(status='CANCELLED', completed_at=now)
+            for old_task in old.tasks.filter(status__in=['PENDING', 'IN_PROGRESS', 'WAITING']):
+                adopt_legacy_active_segment(old_task)
+                close_segment(old_task, now)
+                old_task.status = 'CANCELLED'
+                old_task.completed_at = now
+                old_task.save(update_fields=['status', 'completed_at', 'updated_at'])
             replacement = VisitService.objects.create(
                 visit=old.visit,
                 service=old.service,
@@ -624,14 +631,14 @@ def _pending_opening_task(visit):
 
 @roles_required('EMPLOYEE')
 def execute_service(request,pk):
-    vs=get_object_or_404(VisitService,pk=pk,employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
+    vs=get_object_or_404(VisitService,pk=pk,employee=request.user,visit__branch=user_branch(request.user),status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
     if vs.visit.services.filter(order_number__lt=vs.order_number).exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
         messages.error(request,'Complete the earlier service in this visit first.')
         return redirect('employee_dashboard')
     current=vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).first()
     opening_tasks = vs.tasks.filter(task_type__in=OPENING_TASK_TYPES)
     opening_current = _pending_opening_task(vs.visit)
-    service_tasks = vs.tasks.exclude(task_type__in=OPENING_TASK_TYPES)
+    service_tasks = vs.tasks.exclude(task_type__in=OPENING_TASK_TYPES).prefetch_related('timing_segments')
     return render(request,'operations/execute.html',{
         'vs':vs,
         'current':current,
@@ -643,8 +650,12 @@ def execute_service(request,pk):
 
 @roles_required('EMPLOYEE')
 @require_POST
+@transaction.atomic
 def task_action(request,pk,action):
-    task=get_object_or_404(VisitTask,pk=pk,visit_service__employee=request.user,visit_service__status__in=['ASSIGNED','IN_PROGRESS','PAUSED']); vs=task.visit_service
+    # Serialize requests across all visits for this employee, including two
+    # simultaneous Start/Resume requests from different tabs or phones.
+    User.objects.select_for_update().get(pk=request.user.pk)
+    task=get_object_or_404(VisitTask.objects.select_for_update(),pk=pk,visit_service__employee=request.user,visit_service__visit__branch=user_branch(request.user),visit_service__status__in=['ASSIGNED','IN_PROGRESS','PAUSED']); vs=task.visit_service
     if vs.visit.services.filter(order_number__lt=vs.order_number).exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
         messages.error(request,'Complete the earlier service in this visit first.'); return redirect('employee_dashboard')
     now=timezone.now(); note=request.POST.get('note','').strip()
@@ -674,15 +685,43 @@ def task_action(request,pk,action):
     if opening_current is not None:
         messages.error(request, 'Confirm sanitisation and consultation before starting service work.')
         return redirect('execute_service', pk=vs.pk)
+    if action in ['start', 'resume'] and VisitTask.objects.filter(
+        visit_service__employee=request.user,
+        visit_service__status__in=['ASSIGNED', 'IN_PROGRESS', 'PAUSED'],
+        status='IN_PROGRESS',
+    ).exclude(pk=task.pk).exists():
+        messages.error(request, 'Finish your hands-on task or put it into waiting before starting another.')
+        return redirect('execute_service', pk=vs.pk)
+    if action == 'start' and task.staff_instructions and vs.tasks.filter(sequence__lt=task.sequence).exclude(status__in=['COMPLETED', 'SKIPPED', 'CANCELLED']).exists():
+        messages.error(request, 'Complete the earlier task group in this service first.')
+        return redirect('execute_service', pk=vs.pk)
     if action=='start':
         if task.status!='PENDING': return redirect('execute_service',pk=vs.pk)
         task.status='IN_PROGRESS'; task.started_at=task.started_at or now
+        start_segment(task, 'ACTIVE', now)
         if vs.status=='ASSIGNED': vs.status='IN_PROGRESS'; vs.started_at=vs.started_at or now; vs.visit.status='IN_PROGRESS'; vs.visit.save(update_fields=['status'])
+    elif action == 'wait':
+        if not task.supports_waiting or task.status != 'IN_PROGRESS':
+            messages.error(request, 'Only an active processing-enabled task can enter waiting.')
+            return redirect('execute_service', pk=vs.pk)
+        adopt_legacy_active_segment(task)
+        start_segment(task, 'WAITING', now)
+        task.status = 'WAITING'
+    elif action == 'resume':
+        if not task.supports_waiting or task.status != 'WAITING':
+            return redirect('execute_service', pk=vs.pk)
+        start_segment(task, 'ACTIVE', now)
+        task.status = 'IN_PROGRESS'
     elif action=='complete':
         if task.status!='IN_PROGRESS':
             messages.error(request,'Start the task before completing it.'); return redirect('execute_service',pk=vs.pk)
+        adopt_legacy_active_segment(task)
+        close_segment(task, now)
         task.status='COMPLETED'; task.started_at=task.started_at or now; task.completed_at=now
     elif action=='skip':
+        if task.status != 'PENDING':
+            messages.error(request, 'Only an unstarted task can be skipped.')
+            return redirect('execute_service', pk=vs.pk)
         if not task.can_skip: messages.error(request,'This task cannot be skipped.'); return redirect('execute_service',pk=vs.pk)
         if task.skip_reason_required and not reason: messages.error(request,'Please give a short skip reason.'); return redirect('execute_service',pk=vs.pk)
         task.status='SKIPPED'; task.skip_reason=reason; task.completed_at=now
