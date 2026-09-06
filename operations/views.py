@@ -407,27 +407,6 @@ def verify_visit(request, visit_id):
         messages.error(request, 'This visit can no longer be verified.')
         return redirect('manager_dashboard')
     active_services = [item for item in visit.services.all() if item.status != 'CANCELLED']
-    for service in active_services:
-        if service.started_at and service.employee_completed_at:
-            elapsed_seconds = max(
-                (service.employee_completed_at - service.started_at).total_seconds(), 0
-            )
-            service.elapsed_time = _format_elapsed_time(elapsed_seconds)
-        else:
-            service.elapsed_time = None
-        for task in service.tasks.all():
-            # Opening confirmations are intentionally untimed. Skipped tasks also
-            # do not contribute a duration, even if they happened to be started.
-            if (
-                task.task_type not in OPENING_TASK_TYPES
-                and task.status == 'COMPLETED'
-                and task.started_at
-                and task.completed_at
-            ):
-                elapsed_seconds = max((task.completed_at - task.started_at).total_seconds(), 0)
-                task.elapsed_time = _format_elapsed_time(elapsed_seconds)
-            else:
-                task.elapsed_time = None
     if request.method == 'POST':
         with transaction.atomic():
             locked_visit = Visit.objects.select_for_update().get(pk=visit.pk)
@@ -453,18 +432,6 @@ def verify_visit(request, visit_id):
         messages.success(request, 'All services verified. The invoice can now be added.')
         return redirect('manager_dashboard')
     return render(request, 'operations/verify_visit.html', {'visit': visit, 'services': active_services})
-
-
-def _format_elapsed_time(total_seconds):
-    total_minutes = int((total_seconds / 60) + 0.5)
-    hours, minutes = divmod(total_minutes, 60)
-    if hours and minutes:
-        return f"{hours} hour{'s' if hours != 1 else ''} {minutes} minute{'s' if minutes != 1 else ''}"
-    if hours:
-        return f"{hours} hour{'s' if hours != 1 else ''}"
-    return f"{minutes} minute{'s' if minutes != 1 else ''}"
-
-
 @roles_required('MANAGER')
 def cancel_and_reassign_service(request, pk):
     branch = user_branch(request.user)

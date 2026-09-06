@@ -494,39 +494,6 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertRedirects(response, reverse("manager_dashboard"))
         self.assertFalse(visit.services.exclude(status="CANCELLED").exclude(status="VERIFIED").exists())
 
-    def test_manager_verification_shows_only_timed_completed_task_durations(self):
-        visit, first, second = self.create_visit()
-        now = timezone.now()
-        first.started_at = now - timedelta(minutes=30)
-        first.employee_completed_at = now
-        first.status = "EMPLOYEE_DONE"
-        first.save(update_fields=["started_at", "employee_completed_at", "status"])
-        second.status = "EMPLOYEE_DONE"
-        second.employee_completed_at = now
-        second.save(update_fields=["status", "employee_completed_at"])
-
-        opening_tasks = first.tasks.filter(task_type__in=["HYGIENE", "CONSULT"])
-        opening_tasks.update(status="COMPLETED", completed_at=now)
-        timed_task = first.tasks.get(task_type="SERVICE")
-        timed_task.status = "COMPLETED"
-        timed_task.started_at = now - timedelta(minutes=12)
-        timed_task.completed_at = now
-        timed_task.save(update_fields=["status", "started_at", "completed_at"])
-        skipped_task = second.tasks.get()
-        skipped_task.status = "SKIPPED"
-        skipped_task.started_at = now - timedelta(minutes=45)
-        skipped_task.completed_at = now
-        skipped_task.skip_reason = "Customer declined"
-        skipped_task.save(update_fields=["status", "started_at", "completed_at", "skip_reason"])
-
-        self.client.force_login(self.manager)
-        page = self.client.get(reverse("verify_visit", args=[visit.pk]))
-
-        self.assertContains(page, "Service completed:")
-        self.assertContains(page, "30 minutes total")
-        self.assertContains(page, "12 minutes")
-        self.assertNotContains(page, "45 minutes")
-
     def test_started_service_can_be_cancelled_and_reassigned_without_deleting_history(self):
         visit, first, _ = self.create_visit()
         old_task = first.tasks.first()
