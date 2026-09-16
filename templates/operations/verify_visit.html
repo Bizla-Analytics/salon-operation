@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Verify visit · SalonOps{% endblock %}
+{% block title %}Verify visit · Hairship{% endblock %}
 {% block content %}
 <header class="page-head split"><div><span class="eyebrow">Quality control</span><h1>Verify {{ visit.customer.name }}’s visit</h1><p>Review services in execution order and approve them together.</p></div><a class="button outline" href="{% url 'manager_dashboard' %}">Back</a></header>
 <form method="post" class="visit-verification">{% csrf_token %}

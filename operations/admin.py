@@ -195,4 +195,6 @@ class FeedbackAnswerAdmin(admin.ModelAdmin):
         return obj.question.text.splitlines()[0]
 
 
-admin.site.site_header = "Salon Operations Administration"
+admin.site.site_header = "HAIR SHIP Administration"
+admin.site.site_title = "HAIR SHIP Admin"
+admin.site.index_title = "HAIR SHIP operations"
