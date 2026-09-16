@@ -12,8 +12,15 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .models import *
 from .forms import *
+from .timing import adopt_legacy_active_segment, close_segment, start_segment
 from .decorators import roles_required
-from .workflow import CONSULTATION_CODE, SANITISATION_CODE, build_visit_tasks
+from .workflow import (
+    CONSULTATION_CODE,
+    OPENING_TASK_TYPES,
+    SANITISATION_CODE,
+    build_visit_tasks,
+    rebuild_service_tasks,
+)
 
 def user_branch(user): return getattr(getattr(user,'profile',None),'branch',None)
 
@@ -50,8 +57,14 @@ def admin_reports(request):
         total=Count('id'),
         completed=Count('id', filter=Q(status='COMPLETED')),
         skipped=Count('id', filter=Q(status='SKIPPED')),
-        labour_minutes=Sum('active_labour_minutes'),
-        passive_minutes=Sum('passive_time_minutes'),
+        labour_minutes=Sum(
+            'active_labour_minutes',
+            filter=~Q(task_type__in=OPENING_TASK_TYPES),
+        ),
+        passive_minutes=Sum(
+            'passive_time_minutes',
+            filter=~Q(task_type__in=OPENING_TASK_TYPES),
+        ),
     )
     summary = {
         'visits': visits.count(),
@@ -93,8 +106,14 @@ def admin_reports(request):
             filter=Q(visitservice__status__in=['EMPLOYEE_DONE', 'VERIFIED']),
             distinct=True,
         ),
-        labour_minutes=Sum('visitservice__tasks__active_labour_minutes'),
-        passive_minutes=Sum('visitservice__tasks__passive_time_minutes'),
+        labour_minutes=Sum(
+            'visitservice__tasks__active_labour_minutes',
+            filter=~Q(visitservice__tasks__task_type__in=OPENING_TASK_TYPES),
+        ),
+        passive_minutes=Sum(
+            'visitservice__tasks__passive_time_minutes',
+            filter=~Q(visitservice__tasks__task_type__in=OPENING_TASK_TYPES),
+        ),
     ).order_by('-visit_count', 'name')
     status_rows = visits.values('status').annotate(total=Count('id')).order_by('status')
     rating_rows = FeedbackAnswer.objects.values('rating').annotate(total=Count('id')).order_by('rating')
@@ -130,6 +149,7 @@ def admin_visits(request):
                 queryset=VisitTask.objects.only(
                     'visit_service_id',
                     'status',
+                    'task_type',
                     'started_at',
                     'completed_at',
                 ),
@@ -179,7 +199,12 @@ def admin_visits(request):
             for item in visit_services
             if item.status in ['EMPLOYEE_DONE', 'VERIFIED']
             for task in item.tasks.all()
-            if task.status == 'COMPLETED' and task.started_at and task.completed_at
+            if (
+                task.task_type not in OPENING_TASK_TYPES
+                and task.status == 'COMPLETED'
+                and task.started_at
+                and task.completed_at
+            )
         )
         total_minutes = int((total_seconds / 60) + 0.5)
         hours, minutes = divmod(total_minutes, 60)
@@ -205,10 +230,6 @@ def service_catalog(request):
         selected=form.cleaned_data['service']
         mapped=list(selected.service_details.filter(active=True,sub_service__active=True).select_related('sub_service').order_by('sequence','id'))
         ordered=[]
-        consultation=SubService.objects.filter(code=CONSULTATION_CODE,active=True).first()
-        sanitisation=SubService.objects.filter(code=SANITISATION_CODE,active=True).first()
-        if sanitisation: ordered.append((sanitisation,True))
-        if consultation: ordered.append((consultation,True))
         ordered.extend((detail.sub_service,detail.mandatory) for detail in mapped if detail.sub_service.code not in [CONSULTATION_CODE,SANITISATION_CODE])
         for sub_service,mandatory in ordered:
             task_rows=[]
@@ -266,88 +287,92 @@ def manager_dashboard(request):
             .select_related('customer')
             .prefetch_related(Prefetch('services',queryset=services),'invoice')
             .order_by('created_at','id'))
+    for visit in visits:
+        active_services = [item for item in visit.services.all() if item.status != 'CANCELLED']
+        visit.can_verify_all = bool(active_services) and all(
+            item.status in ['EMPLOYEE_DONE', 'VERIFIED'] for item in active_services
+        ) and any(item.status == 'EMPLOYEE_DONE' for item in active_services)
     return render(request,'operations/manager_dashboard.html',{'visits':visits})
 
 @roles_required('MANAGER')
 def new_visit(request):
-    branch=user_branch(request.user); form=VisitCreateForm(request.POST or None,branch=branch)
+    branch=user_branch(request.user); form=VisitCreateForm(request.POST or None)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             mobile=form.cleaned_data['mobile']; customer=Customer.objects.filter(mobile=mobile).first() if mobile else None
-            customer=customer or Customer.objects.create(name=form.cleaned_data['customer_name'],mobile=mobile)
-            visit=Visit.objects.create(branch=branch,customer=customer,status='ASSIGNED',created_by=request.user)
-            for order_number,service in enumerate(form.cleaned_data['ordered_services'],start=1):
-                VisitService.objects.create(visit=visit,service=service,order_number=order_number,employee=form.cleaned_data['employee'],chair=form.cleaned_data['chair'],assigned_by=request.user)
-        messages.success(request,f"{len(form.cleaned_data['ordered_services'])} service(s) assigned in execution order."); return redirect('manager_dashboard')
-    return render(request,'operations/visit_form.html',{'form':form,'title':'Create visit and assign services'})
+            if customer:
+                if customer.name != form.cleaned_data['customer_name']:
+                    customer.name = form.cleaned_data['customer_name']
+                    customer.save(update_fields=['name', 'updated_at'])
+            else:
+                customer=Customer.objects.create(name=form.cleaned_data['customer_name'],mobile=mobile)
+            visit=Visit.objects.create(branch=branch,customer=customer,status='WAITING',created_by=request.user)
+        messages.success(request,'Customer details saved. Now add and assign the services.')
+        return redirect('edit_visit_services', visit_id=visit.pk)
+    return render(request,'operations/visit_form.html',{'form':form,'title':'Create service visit'})
 
 @roles_required('MANAGER')
 def edit_visit_services(request, visit_id):
     branch = user_branch(request.user)
     visit = get_object_or_404(Visit, pk=visit_id, branch=branch)
-    editable = (
-        visit.status == "ASSIGNED"
-        and not visit.services.exclude(status="ASSIGNED").exists()
-        and not VisitTask.objects.filter(visit_service__visit=visit).exclude(status="PENDING").exists()
-    )
-    if not editable:
-        messages.error(request, "Service order and assignment can only be changed before work starts.")
+    if visit.status in ['VERIFIED', 'INVOICED', 'CLOSED', 'CANCELLED']:
+        messages.error(request, "Assignments cannot be changed after visit verification.")
         return redirect("manager_dashboard")
 
-    form = VisitEditForm(request.POST or None, visit=visit, branch=branch)
-    if request.method == "POST" and form.is_valid():
+    formset_class = (
+        InitialVisitServiceFormSet
+        if request.method == 'GET' and not visit.services.exists()
+        else VisitServiceFormSet
+    )
+    formset = formset_class(
+        request.POST or None,
+        instance=visit,
+        branch=branch,
+        queryset=visit.services.exclude(status='CANCELLED').order_by('order_number', 'id'),
+        prefix='services',
+    )
+    if request.method == "POST" and formset.is_valid():
         with transaction.atomic():
-            current = {
-                item.service_id: item
-                for item in visit.services.select_for_update().order_by("order_number", "id")
-            }
-            ordered_services = form.cleaned_data["ordered_services"]
-            selected_ids = {service.pk for service in ordered_services}
-
-            # Avoid temporary collisions with the per-visit order-number constraint.
-            for offset, item in enumerate(current.values(), start=1):
-                VisitService.objects.filter(pk=item.pk).update(order_number=1000000 + offset)
-
-            visit.services.exclude(service_id__in=selected_ids).delete()
-            for order_number, service in enumerate(ordered_services, start=1):
-                item = current.get(service.pk)
-                if item and item.pk:
-                    item.order_number = order_number
-                    item.employee = form.cleaned_data["employee"]
-                    item.chair = form.cleaned_data["chair"]
-                    item.assigned_by = request.user
+            changed_service_ids = set()
+            for form in formset.forms:
+                if not form.cleaned_data:
+                    continue
+                instance = form.instance
+                if form.cleaned_data.get('DELETE'):
+                    if instance.pk and instance.status == 'ASSIGNED':
+                        instance.delete()
+                    continue
+                if not form.cleaned_data.get('service'):
+                    continue
+                is_new = not instance.pk
+                service_changed = is_new or 'service' in form.changed_data
+                item = form.save(commit=False)
+                item.visit = visit
+                item.assigned_by = request.user
+                if is_new or any(name in form.changed_data for name in ['employee', 'chair']):
                     item.assigned_at = timezone.now()
-                    item.save(
-                        update_fields=[
-                            "order_number",
-                            "employee",
-                            "chair",
-                            "assigned_by",
-                            "assigned_at",
-                            "updated_at",
-                        ]
-                    )
-                else:
-                    VisitService.objects.create(
-                        visit=visit,
-                        service=service,
-                        order_number=order_number,
-                        employee=form.cleaned_data["employee"],
-                        chair=form.cleaned_data["chair"],
-                        assigned_by=request.user,
-                    )
-            build_visit_tasks(visit)
-        messages.success(request, "Service order and assignment updated.")
+                item.save()
+                if service_changed:
+                    changed_service_ids.add(item.pk)
+            active = visit.services.exclude(status='CANCELLED')
+            has_started_history = VisitTask.objects.filter(visit_service__visit=visit).exclude(status='PENDING').exists()
+            if not has_started_history:
+                build_visit_tasks(visit)
+            else:
+                for item in active.filter(pk__in=changed_service_ids):
+                    rebuild_service_tasks(item)
+            visit.status = 'ASSIGNED' if not active.exclude(status='ASSIGNED').exists() else visit.status
+            visit.save(update_fields=['status'])
+        messages.success(request, "Upcoming service order and assignments updated.")
         return redirect("manager_dashboard")
 
     return render(
         request,
-        "operations/visit_form.html",
+        "operations/service_assignments.html",
         {
-            "form": form,
-            "title": f"Edit service order for {visit.customer.name}",
+            "formset": formset,
+            "title": f"Assign services for {visit.customer.name}",
             "visit": visit,
-            "is_edit": True,
         },
     )
 
@@ -360,28 +385,194 @@ def verify_service(request,pk):
         if vs.tasks.filter(required=True).exclude(status='COMPLETED').exists():
             messages.error(request,'Required tasks are not completed.'); return redirect('verify_service',pk=pk)
         vs.status='VERIFIED'; vs.manager_notes=form.cleaned_data['manager_notes']; vs.verified_at=timezone.now(); vs.save()
-        if not vs.visit.services.exclude(status='VERIFIED').exists(): vs.visit.status='VERIFIED'; vs.visit.save(update_fields=['status'])
+        if not vs.visit.services.exclude(status='CANCELLED').exclude(status='VERIFIED').exists(): vs.visit.status='VERIFIED'; vs.visit.save(update_fields=['status'])
         messages.success(request,'Service verified.'); return redirect('manager_dashboard')
     return render(request,'operations/verify.html',{'vs':vs,'form':form})
+
+
+@roles_required('MANAGER')
+def verify_visit(request, visit_id):
+    visit = get_object_or_404(
+        Visit.objects.select_related('customer').prefetch_related(
+            Prefetch(
+                'services',
+                queryset=VisitService.objects.select_related('service', 'employee', 'chair')
+                .prefetch_related('tasks__timing_segments').order_by('order_number', 'id'),
+            )
+        ),
+        pk=visit_id,
+        branch=user_branch(request.user),
+    )
+    if visit.status in ['INVOICED', 'CLOSED', 'CANCELLED']:
+        messages.error(request, 'This visit can no longer be verified.')
+        return redirect('manager_dashboard')
+    active_services = [item for item in visit.services.all() if item.status != 'CANCELLED']
+    if request.method == 'POST':
+        with transaction.atomic():
+            locked_visit = Visit.objects.select_for_update().get(pk=visit.pk)
+            services = list(
+                locked_visit.services.select_for_update().exclude(status='CANCELLED').order_by('order_number', 'id')
+            )
+            unfinished = [item for item in services if item.status not in ['EMPLOYEE_DONE', 'VERIFIED']]
+            incomplete_tasks = VisitTask.objects.filter(
+                visit_service__in=services, required=True
+            ).exclude(status='COMPLETED')
+            if not services or unfinished or incomplete_tasks.exists():
+                messages.error(request, 'Every active service and required task must be completed before Verify all.')
+                return redirect('verify_visit', visit_id=visit.pk)
+            now = timezone.now()
+            for item in services:
+                item.manager_notes = request.POST.get(f'manager_notes_{item.pk}', '').strip()
+                item.status = 'VERIFIED'
+                item.verified_at = item.verified_at or now
+                item.verified_by = request.user
+                item.save(update_fields=['manager_notes', 'status', 'verified_at', 'verified_by', 'updated_at'])
+            locked_visit.status = 'VERIFIED'
+            locked_visit.save(update_fields=['status'])
+        messages.success(request, 'All services verified. The invoice can now be added.')
+        return redirect('manager_dashboard')
+    return render(request, 'operations/verify_visit.html', {'visit': visit, 'services': active_services})
+@roles_required('MANAGER')
+def cancel_and_reassign_service(request, pk):
+    branch = user_branch(request.user)
+    service = get_object_or_404(
+        VisitService.objects.select_related('visit__customer', 'service'), pk=pk, visit__branch=branch
+    )
+    if service.status not in ['ASSIGNED', 'IN_PROGRESS', 'PAUSED']:
+        messages.error(request, 'Only an upcoming or active service can be cancelled and reassigned.')
+        return redirect('manager_dashboard')
+    form = CancelAndReassignForm(
+        request.POST or None,
+        branch=branch,
+        initial={'employee': service.employee_id, 'chair': service.chair_id},
+    )
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=service.employee_id)
+            old = VisitService.objects.select_for_update().get(pk=service.pk)
+            if old.status not in ['ASSIGNED', 'IN_PROGRESS', 'PAUSED']:
+                messages.error(request, 'This service can no longer be reassigned.')
+                return redirect('manager_dashboard')
+            now = timezone.now()
+            old.status = 'CANCELLED'
+            old.cancelled_at = now
+            old.cancelled_by = request.user
+            old.cancellation_reason = form.cleaned_data['cancellation_reason']
+            old.save(update_fields=['status', 'cancelled_at', 'cancelled_by', 'cancellation_reason', 'updated_at'])
+            for old_task in old.tasks.filter(status__in=['PENDING', 'IN_PROGRESS', 'WAITING']):
+                adopt_legacy_active_segment(old_task)
+                close_segment(old_task, now)
+                old_task.status = 'CANCELLED'
+                old_task.completed_at = now
+                old_task.save(update_fields=['status', 'completed_at', 'updated_at'])
+            replacement = VisitService.objects.create(
+                visit=old.visit,
+                service=old.service,
+                order_number=old.order_number,
+                employee=form.cleaned_data['employee'],
+                chair=form.cleaned_data['chair'],
+                assigned_by=request.user,
+                replaces=old,
+            )
+            completed_opening_types = set(VisitTask.objects.filter(
+                visit_service__visit=old.visit,
+                task_type__in=['HYGIENE', 'CONSULT'],
+                status__in=['COMPLETED', 'SKIPPED'],
+            ).values_list('task_type', flat=True))
+            rebuild_service_tasks(
+                replacement,
+                include_sanitisation=old.order_number == 1 and 'HYGIENE' not in completed_opening_types,
+                include_consultation=old.order_number == 1 and 'CONSULT' not in completed_opening_types,
+            )
+            old.visit.status = 'ASSIGNED'
+            old.visit.save(update_fields=['status'])
+        messages.success(request, 'The original service was cancelled and a replacement was assigned.')
+        return redirect('manager_dashboard')
+    return render(request, 'operations/form.html', {
+        'form': form,
+        'title': f'Cancel and reassign {service.service.name}',
+        'form_note': 'The original task history will be preserved. A cancellation reason is required.',
+    })
 
 @roles_required('MANAGER')
 def add_invoice(request,visit_id):
     visit=get_object_or_404(Visit,pk=visit_id,branch=user_branch(request.user))
-    if hasattr(visit, "invoice"):
+    existing = Invoice.objects.filter(visit=visit).first()
+    if existing and existing.status == 'COMPLETED':
         feedback, _ = Feedback.objects.get_or_create(visit=visit)
-        messages.info(request, "This combined visit already has one invoice and feedback request.")
-        return render(request, 'operations/feedback_link.html', {'feedback': feedback})
-    form=InvoiceForm(request.POST or None)
-    if visit.services.exclude(status='VERIFIED').exists():
+        messages.info(request, "This combined visit already has one completed invoice.")
+        return redirect('manager_dashboard')
+    if not visit.is_invoice_ready:
         messages.error(request,'Verify every service in the order before creating the invoice.')
         return redirect('manager_dashboard')
+    form=CompleteInvoiceForm(request.POST or None, initial={
+        'customer_name': visit.customer.name,
+        'mobile': visit.customer.mobile,
+        'invoice_number': existing.invoice_number if existing else '',
+    })
     if request.method=='POST' and form.is_valid():
-        inv=form.save(commit=False); inv.visit=visit; inv.entered_by=request.user
-        inv.amount=sum((item.service.base_price for item in visit.services.select_related('service')),start=0)
-        inv.save(); visit.status='INVOICED'; visit.save(update_fields=['status']); fb,_=Feedback.objects.get_or_create(visit=visit)
-        return render(request,'operations/feedback_link.html',{'feedback':fb})
-    total=sum((item.service.base_price for item in visit.services.select_related('service')),start=0)
-    return render(request,'operations/form.html',{'form':form,'title':'Complete invoice','form_note':f'Service total: {total:.2f} (calculated automatically)'})
+        with transaction.atomic():
+            locked = Visit.objects.select_for_update().get(pk=visit.pk)
+            customer = locked.customer
+            customer.name = form.cleaned_data['customer_name']
+            customer.mobile = form.cleaned_data['mobile']
+            customer.save(update_fields=['name', 'mobile', 'updated_at'])
+            total=sum((item.service.base_price for item in locked.services.exclude(status='CANCELLED').select_related('service')),start=0)
+            inv = existing or Invoice(visit=locked, entered_by=request.user)
+            inv.invoice_number = form.cleaned_data['invoice_number']
+            inv.amount = total
+            inv.status = 'COMPLETED'
+            inv.completed_at = timezone.now()
+            inv.save()
+            locked.status='INVOICED'; locked.save(update_fields=['status'])
+            Feedback.objects.get_or_create(visit=locked)
+        messages.success(request, 'Invoice completed. Feedback can now be collected.')
+        return redirect('manager_dashboard')
+    total=sum((item.service.base_price for item in visit.services.exclude(status='CANCELLED').select_related('service')),start=0)
+    return render(request,'operations/invoice_form.html',{'form':form,'visit':visit,'total':total})
+
+
+def _save_feedback(request, feedback, questions):
+    for question in questions:
+        try:
+            rating = int(request.POST.get(f'q_{question.id}', 0))
+        except (TypeError, ValueError):
+            rating = 0
+        if rating not in range(1, 6):
+            return False
+        FeedbackAnswer.objects.update_or_create(
+            feedback=feedback, question=question, defaults={'rating': rating}
+        )
+    feedback.suggestion=request.POST.get('suggestion','').strip()
+    feedback.submitted_at=timezone.now()
+    feedback.save(update_fields=['suggestion', 'submitted_at', 'updated_at'])
+    feedback.visit.status='CLOSED'
+    feedback.visit.closed_at=timezone.now()
+    feedback.visit.save(update_fields=['status','closed_at'])
+    return True
+
+
+@roles_required('MANAGER')
+def collect_feedback(request, visit_id):
+    visit = get_object_or_404(Visit, pk=visit_id, branch=user_branch(request.user), status='INVOICED')
+    feedback, _ = Feedback.objects.get_or_create(visit=visit)
+    questions = FeedbackQuestion.objects.filter(active=True)
+    if request.method == 'POST':
+        if request.POST.get('action') == 'close_visit':
+            visit.status = 'CLOSED'
+            visit.closed_at = timezone.now()
+            visit.save(update_fields=['status', 'closed_at', 'updated_at'])
+            messages.success(request, 'Visit closed without collecting feedback.')
+            return redirect('manager_dashboard')
+        with transaction.atomic():
+            if not _save_feedback(request, feedback, questions):
+                messages.error(request, 'Please answer every feedback question.')
+            else:
+                messages.success(request, 'Feedback saved and the visit was closed.')
+                return redirect('manager_dashboard')
+    return render(request, 'operations/feedback.html', {
+        'feedback': feedback, 'questions': questions, 'manager_collection': True
+    })
 
 @roles_required('EMPLOYEE')
 def employee_dashboard(request):
@@ -392,44 +583,125 @@ def employee_dashboard(request):
         .order_by('visit__created_at','visit_id','order_number','id'))
     return render(request,'operations/employee_dashboard.html',{'jobs':jobs})
 
+
+def _pending_opening_task(visit):
+    return (
+        VisitTask.objects.filter(
+            visit_service__visit=visit,
+            task_type__in=OPENING_TASK_TYPES,
+        )
+        .exclude(status__in=['COMPLETED', 'SKIPPED', 'CANCELLED'])
+        .order_by('visit_service__order_number', 'sequence', 'id')
+        .first()
+    )
+
+
 @roles_required('EMPLOYEE')
 def execute_service(request,pk):
-    vs=get_object_or_404(VisitService,pk=pk,employee=request.user)
+    vs=get_object_or_404(VisitService,pk=pk,employee=request.user,visit__branch=user_branch(request.user),status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
     if vs.visit.services.filter(order_number__lt=vs.order_number).exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
         messages.error(request,'Complete the earlier service in this visit first.')
         return redirect('employee_dashboard')
     current=vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).first()
-    return render(request,'operations/execute.html',{'vs':vs,'current':current,'tasks':vs.tasks.all()})
+    opening_tasks = vs.tasks.filter(task_type__in=OPENING_TASK_TYPES)
+    opening_current = _pending_opening_task(vs.visit)
+    service_tasks = vs.tasks.exclude(task_type__in=OPENING_TASK_TYPES).prefetch_related('timing_segments')
+    return render(request,'operations/execute.html',{
+        'vs':vs,
+        'current':current,
+        'opening_tasks':opening_tasks,
+        'opening_current':opening_current,
+        'service_tasks':service_tasks,
+        'service_actions_locked':opening_current is not None,
+    })
 
 @roles_required('EMPLOYEE')
 @require_POST
+@transaction.atomic
 def task_action(request,pk,action):
-    task=get_object_or_404(VisitTask,pk=pk,visit_service__employee=request.user); vs=task.visit_service
+    # Serialize requests across all visits for this employee, including two
+    # simultaneous Start/Resume requests from different tabs or phones.
+    User.objects.select_for_update().get(pk=request.user.pk)
+    task=get_object_or_404(VisitTask.objects.select_for_update(),pk=pk,visit_service__employee=request.user,visit_service__visit__branch=user_branch(request.user),visit_service__status__in=['ASSIGNED','IN_PROGRESS','PAUSED']); vs=task.visit_service
     if vs.visit.services.filter(order_number__lt=vs.order_number).exclude(status__in=['EMPLOYEE_DONE','VERIFIED','CANCELLED']).exists():
         messages.error(request,'Complete the earlier service in this visit first.'); return redirect('employee_dashboard')
     now=timezone.now(); note=request.POST.get('note','').strip()
     reason_choice=request.POST.get('skip_reason_choice','').strip()
     reason_other=request.POST.get('skip_reason_other','').strip()
     reason=reason_other if reason_choice=='OTHER' else reason_choice
+    opening_current = _pending_opening_task(vs.visit)
+    if action == 'confirm':
+        if task.task_type not in OPENING_TASK_TYPES:
+            messages.error(request, 'Only visit opening checks can be confirmed.')
+            return redirect('execute_service', pk=vs.pk)
+        if opening_current is None or task.pk != opening_current.pk:
+            messages.error(request, 'Confirm the visit opening checks in order.')
+            return redirect('execute_service', pk=vs.pk)
+        task.status = 'COMPLETED'
+        task.started_at = None
+        task.completed_at = now
+        task.note = note
+        task.performed_by = request.user
+        task.save(update_fields=[
+            'status', 'started_at', 'completed_at', 'note', 'performed_by', 'updated_at'
+        ])
+        return redirect('execute_service', pk=vs.pk)
+    if task.task_type in OPENING_TASK_TYPES:
+        messages.error(request, 'Use Confirm for visit opening checks; they are not timed.')
+        return redirect('execute_service', pk=vs.pk)
+    if opening_current is not None:
+        messages.error(request, 'Confirm sanitisation and consultation before starting service work.')
+        return redirect('execute_service', pk=vs.pk)
+    if action in ['start', 'resume'] and VisitTask.objects.filter(
+        visit_service__employee=request.user,
+        visit_service__status__in=['ASSIGNED', 'IN_PROGRESS', 'PAUSED'],
+        status='IN_PROGRESS',
+    ).exclude(pk=task.pk).exists():
+        messages.error(request, 'Finish your hands-on task or put it into waiting before starting another.')
+        return redirect('execute_service', pk=vs.pk)
+    if action == 'start' and task.staff_instructions and vs.tasks.filter(sequence__lt=task.sequence).exclude(status__in=['COMPLETED', 'SKIPPED', 'CANCELLED']).exists():
+        messages.error(request, 'Complete the earlier task group in this service first.')
+        return redirect('execute_service', pk=vs.pk)
     if action=='start':
         if task.status!='PENDING': return redirect('execute_service',pk=vs.pk)
         task.status='IN_PROGRESS'; task.started_at=task.started_at or now
+        start_segment(task, 'ACTIVE', now)
         if vs.status=='ASSIGNED': vs.status='IN_PROGRESS'; vs.started_at=vs.started_at or now; vs.visit.status='IN_PROGRESS'; vs.visit.save(update_fields=['status'])
+    elif action == 'wait':
+        if not task.supports_waiting or task.status != 'IN_PROGRESS':
+            messages.error(request, 'Only an active processing-enabled task can enter waiting.')
+            return redirect('execute_service', pk=vs.pk)
+        adopt_legacy_active_segment(task)
+        start_segment(task, 'WAITING', now)
+        task.status = 'WAITING'
+    elif action == 'resume':
+        if not task.supports_waiting or task.status != 'WAITING':
+            return redirect('execute_service', pk=vs.pk)
+        start_segment(task, 'ACTIVE', now)
+        task.status = 'IN_PROGRESS'
     elif action=='complete':
         if task.status!='IN_PROGRESS':
             messages.error(request,'Start the task before completing it.'); return redirect('execute_service',pk=vs.pk)
+        adopt_legacy_active_segment(task)
+        close_segment(task, now)
         task.status='COMPLETED'; task.started_at=task.started_at or now; task.completed_at=now
     elif action=='skip':
+        if task.status != 'PENDING':
+            messages.error(request, 'Only an unstarted task can be skipped.')
+            return redirect('execute_service', pk=vs.pk)
         if not task.can_skip: messages.error(request,'This task cannot be skipped.'); return redirect('execute_service',pk=vs.pk)
         if task.skip_reason_required and not reason: messages.error(request,'Please give a short skip reason.'); return redirect('execute_service',pk=vs.pk)
         task.status='SKIPPED'; task.skip_reason=reason; task.completed_at=now
+    else:
+        messages.error(request, 'Unknown task action.')
+        return redirect('execute_service', pk=vs.pk)
     task.note=note; task.performed_by=request.user; task.save(); vs.save()
     return redirect('execute_service',pk=vs.pk)
 
 @roles_required('EMPLOYEE')
 @require_POST
 def finish_service(request,pk):
-    vs=get_object_or_404(VisitService,pk=pk,employee=request.user)
+    vs=get_object_or_404(VisitService,pk=pk,employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
     if vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).exists(): messages.error(request,'Complete or skip the remaining tasks first.')
     else:
         vs.status='EMPLOYEE_DONE'; vs.employee_completed_at=timezone.now(); vs.employee_notes=request.POST.get('employee_notes',''); vs.save()
@@ -443,10 +715,8 @@ def feedback_form(request,token):
     questions=FeedbackQuestion.objects.filter(active=True)
     if request.method=='POST' and not fb.submitted_at:
         with transaction.atomic():
-            for q in questions:
-                r=int(request.POST.get(f'q_{q.id}',0))
-                if r not in range(1,6): messages.error(request,'Please answer all five questions.'); return render(request,'operations/feedback.html',{'feedback':fb,'questions':questions})
-                FeedbackAnswer.objects.update_or_create(feedback=fb,question=q,defaults={'rating':r})
-            fb.suggestion=request.POST.get('suggestion',''); fb.submitted_at=timezone.now(); fb.save(); fb.visit.status='CLOSED'; fb.visit.closed_at=timezone.now(); fb.visit.save(update_fields=['status','closed_at'])
+            if not _save_feedback(request, fb, questions):
+                messages.error(request,'Please answer all five questions.')
+                return render(request,'operations/feedback.html',{'feedback':fb,'questions':questions})
         return render(request,'operations/feedback_thanks.html')
     return render(request,'operations/feedback.html',{'feedback':fb,'questions':questions})

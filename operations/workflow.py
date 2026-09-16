@@ -3,6 +3,7 @@ from .models import SubService, VisitTask
 
 CONSULTATION_CODE = "SUB001"
 SANITISATION_CODE = "SUB025"
+OPENING_TASK_TYPES = ("HYGIENE", "CONSULT")
 
 
 def _task_type(sub_service_code):
@@ -29,6 +30,8 @@ def _append_sub_service_tasks(rows, visit_service, sub_service, start_sequence, 
                 instructions=task.notes,
                 active_labour_minutes=task.active_labour_minutes,
                 passive_time_minutes=task.passive_time_minutes,
+                supports_waiting=task.supports_waiting,
+                staff_instructions=task.staff_instructions,
                 required=required,
                 can_skip=task.is_skippable,
                 skip_reason_required=task.is_skippable,
@@ -101,6 +104,62 @@ def build_visit_tasks(visit):
                 )
                 sequence += 10
 
+    VisitTask.objects.bulk_create(rows)
+
+
+def rebuild_service_tasks(visit_service, include_sanitisation=False, include_consultation=False):
+    """Build a fresh snapshot only for an unstarted service assignment.
+
+    This is used for a newly-added upcoming service or a replacement.  It must
+    never rewrite task history belonging to other services in the visit.
+    """
+    if visit_service.status != "ASSIGNED":
+        return
+    if visit_service.tasks.exclude(status="PENDING").exists():
+        return
+    visit_service.tasks.all().delete()
+    rows = []
+    sequence = 10
+    if include_sanitisation:
+        sanitisation = SubService.objects.filter(code=SANITISATION_CODE, active=True).first()
+        if sanitisation:
+            sequence = _append_sub_service_tasks(rows, visit_service, sanitisation, sequence)
+    if include_consultation:
+        consultation = SubService.objects.filter(code=CONSULTATION_CODE, active=True).first()
+        if consultation:
+            sequence = _append_sub_service_tasks(rows, visit_service, consultation, sequence)
+
+    procedure_row_count = len(rows)
+    details = (
+        visit_service.service.service_details.filter(active=True, sub_service__active=True)
+        .exclude(sub_service__code__in=[CONSULTATION_CODE, SANITISATION_CODE])
+        .select_related("sub_service")
+        .prefetch_related("sub_service__tasks")
+        .order_by("sequence", "id")
+    )
+    for detail in details:
+        sequence = _append_sub_service_tasks(
+            rows, visit_service, detail.sub_service, sequence, required=detail.mandatory
+        )
+    if len(rows) == procedure_row_count:
+        for legacy in visit_service.service.sop_tasks.filter(active=True).exclude(
+            task_type__in=["CONSULT", "HYGIENE"]
+        ):
+            rows.append(
+                VisitTask(
+                    visit_service=visit_service,
+                    source_task=legacy,
+                    sequence=sequence,
+                    phase=legacy.phase,
+                    task_type=legacy.task_type,
+                    title=legacy.title,
+                    instructions=legacy.instructions,
+                    required=legacy.required,
+                    can_skip=legacy.can_skip,
+                    skip_reason_required=legacy.skip_reason_required,
+                )
+            )
+            sequence += 10
     VisitTask.objects.bulk_create(rows)
 
 

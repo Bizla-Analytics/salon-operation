@@ -38,9 +38,14 @@ backups/
 .deploy/
 *.sql.gz
 exports/
+outputs/
+output/
 
 # Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local operator notes
+DOCKER_COMMANDS.md

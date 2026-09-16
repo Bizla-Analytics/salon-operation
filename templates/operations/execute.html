@@ -1,22 +1,74 @@
-{% extends 'base.html' %}{% block title %}{{ vs.visit.customer.name }} · SalonOps{% endblock %}{% block content %}
-<div class="employee-work"><header class="task-head"><div><span class="eyebrow">Current service</span><h1>{{ vs.visit.customer.name }}</h1><p class="muted">{{ vs.service.name }} · {{ vs.chair|default:'No chair' }}</p></div><div class="service-progress"><b>{{ vs.progress_percent }}%</b><span>complete</span></div></header>
-<div class="progress service-progress-bar"><i style="width:{{ vs.progress_percent }}%"></i></div>
-<div class="full-task-list">{% for task in tasks %}<article class="task-item {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}task-finished{% elif task.status == 'IN_PROGRESS' %}task-active{% endif %}">
-<header><div><span class="task-number">{{ task.sequence }}</span><span class="task-meta">{{ task.get_phase_display }} · {{ task.get_task_type_display }}</span><h2>{{ task.title }}</h2>{% if task.instructions %}<p>{{ task.instructions }}</p>{% endif %}</div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></header>
-{% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}<div class="finished-note">{% if task.status == 'COMPLETED' %}✓ Completed{% else %}Skipped{% if task.skip_reason %}: {{ task.skip_reason }}{% endif %}{% endif %}</div>
-{% else %}<div class="task-actions">
-<form method="post" action="{% url 'task_action' task.id 'start' %}">{% csrf_token %}<button class="task-button start {% if task.status == 'IN_PROGRESS' %}pressed{% endif %}" {% if task.status == 'IN_PROGRESS' %}disabled{% endif %}>{% if task.status == 'IN_PROGRESS' %}Started{% else %}Start{% endif %}</button></form>
-<form method="post" action="{% url 'task_action' task.id 'complete' %}">{% csrf_token %}<button class="task-button complete" {% if task.status != 'IN_PROGRESS' %}disabled{% endif %}>Complete</button></form>
-{% if task.can_skip %}<button type="button" class="task-button skip" data-skip-toggle="skip-{{ task.id }}">Skip</button>{% else %}<button type="button" class="task-button skip" disabled>Cannot skip</button>{% endif %}
+{% extends 'base.html' %}
+{% block title %}{{ vs.visit.customer.name }} · Hairship{% endblock %}
+{% block content %}
+<div class="employee-work">
+  <header class="task-head">
+    <div><span class="eyebrow">Current service</span><h1>{{ vs.visit.customer.name }}</h1><p class="muted">{{ vs.service.name }} · {{ vs.chair|default:'No chair' }}</p></div>
+    <div class="service-progress"><b>{{ vs.progress_percent }}%</b><span>complete</span></div>
+  </header>
+  <div class="progress service-progress-bar"><i style="width:{{ vs.progress_percent }}%"></i></div>
+
+  {% if opening_tasks %}
+  <section class="panel visit-opening">
+    <header><div><span class="eyebrow">Once per visit</span><h2>Visit opening checks</h2><p>Confirm each check without starting a timer.</p></div></header>
+    <div class="opening-check-list">
+      {% for task in opening_tasks %}
+      <article class="opening-check {% if task.status == 'COMPLETED' %}confirmed{% endif %}">
+        <div><strong>{{ task.title }}</strong><span>{% if task.status == 'COMPLETED' %}Confirmed{% elif task.status == 'SKIPPED' %}Previously skipped{% else %}Waiting for confirmation{% endif %}</span></div>
+        {% if task.status == 'COMPLETED' %}<span class="opening-check-mark">✓</span>
+        {% elif task.status == 'SKIPPED' %}<span class="status skipped">Skipped</span>
+        {% else %}<form method="post" action="{% url 'task_action' task.id 'confirm' %}">{% csrf_token %}<button class="button success" {% if not opening_current or task.id != opening_current.id %}disabled{% endif %}>Confirm</button></form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if service_actions_locked %}<div class="opening-lock-note">Confirm the visit opening checks before starting service work.</div>{% endif %}
+
+  <div class="full-task-list">
+    {% for task in service_tasks %}
+    <article class="task-item {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}task-finished{% elif task.status == 'IN_PROGRESS' %}task-active{% endif %}">
+      <header><div><h2><span class="task-number">{{ forloop.counter }}</span>{{ task.title }}</h2></div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></header>
+      {% if task.staff_instructions %}<p class="muted">{{ task.staff_instructions }}</p>{% endif %}
+      {% if task.supports_waiting and task.started_at %}<p class="muted">Hands-on: <span data-elapsed="{{ task.labour_seconds }}" {% if task.status == 'IN_PROGRESS' %}data-running="true"{% endif %}></span> · Waiting: <span data-elapsed="{{ task.waiting_seconds }}" {% if task.status == 'WAITING' %}data-running="true"{% endif %}></span></p>{% endif %}
+      {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}
+      <div class="finished-note">{% if task.status == 'COMPLETED' %}✓ Completed{% else %}Skipped{% if task.skip_reason %}: {{ task.skip_reason }}{% endif %}{% endif %}</div>
+      {% else %}
+      <div class="task-actions">
+        {% if task.supports_waiting %}
+        {% if task.status == 'PENDING' %}<form method="post" action="{% url 'task_action' task.id 'start' %}">{% csrf_token %}<button class="task-button start" {% if service_actions_locked %}disabled{% endif %}>Start</button></form>
+        {% elif task.status == 'WAITING' %}<form method="post" action="{% url 'task_action' task.id 'resume' %}">{% csrf_token %}<button class="task-button start">Resume</button></form><span class="muted">Processing / setting. Resume when you return; then complete after removal and finishing.</span>
+        {% elif task.status == 'IN_PROGRESS' %}<form method="post" action="{% url 'task_action' task.id 'wait' %}">{% csrf_token %}<button class="task-button start">Start Waiting</button></form><form method="post" action="{% url 'task_action' task.id 'complete' %}">{% csrf_token %}<button class="task-button complete">Complete</button></form>
+        {% endif %}
+        {% else %}
+        <form method="post" action="{% url 'task_action' task.id 'start' %}">{% csrf_token %}<button class="task-button start {% if task.status == 'IN_PROGRESS' %}pressed{% endif %}" {% if service_actions_locked or task.status == 'IN_PROGRESS' %}disabled{% endif %}>{% if task.status == 'IN_PROGRESS' %}Started{% else %}Start{% endif %}</button></form>
+        <form method="post" action="{% url 'task_action' task.id 'complete' %}">{% csrf_token %}<button class="task-button complete" {% if service_actions_locked or task.status != 'IN_PROGRESS' %}disabled{% endif %}>Complete</button></form>
+        {% endif %}
+        {% if task.can_skip and task.status == 'PENDING' %}<button type="button" class="task-button skip" data-skip-toggle="skip-{{ task.id }}" {% if service_actions_locked %}disabled{% endif %}>Skip</button>{% endif %}
+      </div>
+      {% if task.can_skip %}
+      <form method="post" action="{% url 'task_action' task.id 'skip' %}" class="skip-panel" id="skip-{{ task.id }}" hidden>{% csrf_token %}
+        <label for="reason-{{ task.id }}">Reason for skipping</label>
+        <select name="skip_reason_choice" id="reason-{{ task.id }}" class="form-select skip-reason" {% if task.skip_reason_required %}required{% endif %}><option value="">Select a reason</option>
+          {% if task.task_type == 'TOWEL' %}<option>Fresh towel already prepared</option><option>Towel or laundry unavailable</option><option>Task not required for this service</option>
+          {% elif task.task_type == 'QUALITY' %}<option>Customer declined quality check</option><option>Manager will perform the check</option><option>Check not applicable</option>
+          {% elif task.task_type == 'RECOMMEND' %}<option>Customer declined recommendations</option><option>No recommendation applicable</option><option>Recommendation already provided</option>
+          {% else %}<option>Customer requested to skip</option><option>Task not applicable</option><option>Required item unavailable</option>{% endif %}<option value="OTHER">Other</option>
+        </select>
+        <textarea name="skip_reason_other" class="form-control other-reason" rows="2" placeholder="Type the reason" hidden></textarea>
+        <div class="skip-submit"><button type="button" class="button outline" data-skip-cancel="skip-{{ task.id }}">Cancel</button><button class="button dark">Confirm skip</button></div>
+      </form>
+      {% endif %}
+      {% endif %}
+    </article>
+    {% empty %}<div class="empty-state"><b>No service tasks</b><span>This service does not have any active tasks.</span></div>
+    {% endfor %}
+  </div>
+
+  {% if not current %}<section class="panel finish-service"><h2>All tasks finished</h2><p class="muted">Send the completed service to your manager for verification.</p><form method="post" action="{% url 'finish_service' vs.id %}" class="form-grid">{% csrf_token %}<textarea name="employee_notes" class="form-control" rows="2" placeholder="Optional final note"></textarea><button class="button success large">Submit to manager</button></form></section>{% endif %}
 </div>
-{% if task.can_skip %}<form method="post" action="{% url 'task_action' task.id 'skip' %}" class="skip-panel" id="skip-{{ task.id }}" hidden>{% csrf_token %}<label for="reason-{{ task.id }}">Reason for skipping</label><select name="skip_reason_choice" id="reason-{{ task.id }}" class="form-select skip-reason" {% if task.skip_reason_required %}required{% endif %}><option value="">Select a reason</option>
-{% if task.task_type == 'HYGIENE' %}<option>Area already cleaned and sanitised</option><option>Cleaning supplies unavailable</option><option>Task not required for this service</option>
-{% elif task.task_type == 'TOWEL' %}<option>Fresh towel already prepared</option><option>Towel or laundry unavailable</option><option>Task not required for this service</option>
-{% elif task.task_type == 'CONSULT' %}<option>Customer declined consultation</option><option>Consultation already completed</option><option>Customer preference recorded earlier</option>
-{% elif task.task_type == 'QUALITY' %}<option>Customer declined quality check</option><option>Manager will perform the check</option><option>Check not applicable</option>
-{% elif task.task_type == 'RECOMMEND' %}<option>Customer declined recommendations</option><option>No recommendation applicable</option><option>Recommendation already provided</option>
-{% else %}<option>Customer requested to skip</option><option>Task not applicable</option><option>Required item unavailable</option>{% endif %}<option value="OTHER">Other</option></select><textarea name="skip_reason_other" class="form-control other-reason" rows="2" placeholder="Type the reason" hidden></textarea><div class="skip-submit"><button type="button" class="button outline" data-skip-cancel="skip-{{ task.id }}">Cancel</button><button class="button dark">Confirm skip</button></div></form>{% endif %}
-{% endif %}</article>{% empty %}<div class="empty-state"><b>No SOP tasks</b><span>This service does not have any active tasks.</span></div>{% endfor %}</div>
-{% if not current %}<section class="panel finish-service"><h2>All tasks finished</h2><p class="muted">Send the completed service to your manager for verification.</p><form method="post" action="{% url 'finish_service' vs.id %}" class="form-grid">{% csrf_token %}<textarea name="employee_notes" class="form-control" rows="2" placeholder="Optional final note"></textarea><button class="button success large">Submit to manager</button></form></section>{% endif %}</div>
+<script>(function(){var began=Date.now();function tick(){document.querySelectorAll('[data-elapsed]').forEach(function(el){var s=Number(el.dataset.elapsed)+(el.dataset.running?Math.floor((Date.now()-began)/1000):0);el.textContent=Math.floor(s/60)+'m '+(s%60)+'s';});}tick();setInterval(tick,1000);})();</script>
 <script>document.addEventListener('click',function(e){let open=e.target.dataset.skipToggle,cancel=e.target.dataset.skipCancel;if(open)document.getElementById(open).hidden=false;if(cancel)document.getElementById(cancel).hidden=true});document.querySelectorAll('.skip-reason').forEach(function(select){select.addEventListener('change',function(){let other=this.closest('.skip-panel').querySelector('.other-reason');other.hidden=this.value!=='OTHER';other.required=this.value==='OTHER';if(!other.required)other.value=''})});</script>
 {% endblock %}

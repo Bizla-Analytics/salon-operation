@@ -65,6 +65,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("workbook", nargs="?", default="data/Service_Operation_SOP_Upload_Workbook.xlsx")
+        parser.add_argument("--dry-run", action="store_true", help="Validate the import transaction, then roll it back.")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -156,6 +157,8 @@ class Command(BaseCommand):
                     "employee_role": text(row["employee_role"]),
                     "active_labour_minutes": integer(row["active_labour_minutes"]),
                     "passive_time_minutes": integer(row["passive_time_minutes"]),
+                    "supports_waiting": boolean(row.get("supports_waiting", False)),
+                    "staff_instructions": text(row.get("staff_instructions", "")),
                     "required_skill": text(row["required_skill"]),
                     "allowed_staff_type": text(row["allowed_staff_type"]),
                     "default_customer_type": text(row["default_customer_type"]),
@@ -217,4 +220,9 @@ class Command(BaseCommand):
         counts["equipment mappings"] = TaskEquipment.objects.count()
 
         summary = ", ".join(f"{name}: {count}" for name, count in counts.items())
-        self.stdout.write(self.style.SUCCESS(f"Workbook imported successfully — {summary}"))
+        book.close()
+        if options["dry_run"]:
+            transaction.set_rollback(True)
+            self.stdout.write(self.style.SUCCESS(f"Dry run successful; no changes saved — {summary}"))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"Workbook imported successfully — {summary}"))
