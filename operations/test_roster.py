@@ -38,11 +38,16 @@ class BranchRosterTests(TestCase):
         self.assertEqual(self.client.get(reverse("health")).json()["status"], "ok")
         self.client.force_login(self.gm)
         self.assertEqual(self.client.get(reverse("manager_dashboard")).status_code, 403)
-        self.assertEqual(self.client.get(reverse("branch_roster")).status_code, 200)
+        roster_page = self.client.get(reverse("branch_roster"))
+        self.assertEqual(roster_page.status_code, 200)
+        self.assertContains(roster_page, "Assign working branch first")
+        self.assertNotContains(roster_page, f'href="{reverse("manager_dashboard")}"')
         self.assertEqual(self.client.get(reverse("admin_reports")).status_code, 200)
         self.assertEqual(self.client.get(reverse("create_user")).status_code, 403)
         self.duty(self.gm, self.b)
-        self.assertEqual(self.client.get(reverse("manager_dashboard")).status_code, 200)
+        manager_page = self.client.get(reverse("manager_dashboard"))
+        self.assertEqual(manager_page.status_code, 200)
+        self.assertContains(manager_page, "Live operations · Branch B")
         response = self.client.post(reverse("new_visit"), {
             "customer_name": "Roster Customer", "mobile": "",
         })

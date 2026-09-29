@@ -31,8 +31,12 @@
         <a href="{% url 'admin_visits' %}">&#128203; <span>All visits</span></a>
         <a href="{% url 'admin_reports' %}">&#128202; <span>Reports</span></a>
         <p>Acting branch manager</p>
-        <a href="{% url 'manager_dashboard' %}">&#8962; <span>Live operations</span></a>
-        <a href="{% url 'new_visit' %}">+ <span>New service order</span></a>
+        {% if acting_branch %}
+          <a href="{% url 'manager_dashboard' %}">&#8962; <span>Live operations · {{ acting_branch.name }}</span></a>
+          <a href="{% url 'new_visit' %}">+ <span>New service order</span></a>
+        {% else %}
+          <a href="{% url 'branch_roster' %}">&#128197; <span>Assign working branch first</span></a>
+        {% endif %}
       {% else %}
         <p>Operations</p><a href="{% url 'new_visit' %}">+ <span>New service order</span></a>
       {% endif %}

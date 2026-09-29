@@ -6,6 +6,9 @@
   <h1>Branch duty roster</h1>
   <p>Schedule temporary branch cover or leave for up to 31 days. A dated duty overrides the person's home branch; otherwise managers and employees work at their home branch. General managers need a working duty to act as a branch manager.</p>
 </header>
+{% if user.profile.role == 'GENERAL_MANAGER' and not acting_branch %}
+<div class="notice">To use Acting branch manager today, select yourself below, keep today's dates, choose “Working at branch” and the branch, then save.</div>
+{% endif %}
 <section class="panel narrow">
   <h2 class="section-title">Set a duty</h2>
   <form method="post" class="form-grid">{% csrf_token %}{{ form.as_p }}<button class="button primary large" type="submit">Save roster</button></form>
