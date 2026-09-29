@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Branch,
+    BranchDuty,
     Chair,
     Customer,
     Equipment,
@@ -34,6 +35,18 @@ class BranchAdmin(admin.ModelAdmin):
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "role", "branch", "employee_code", "active")
     list_filter = ("role", "branch", "active")
+
+
+@admin.register(BranchDuty)
+class BranchDutyAdmin(admin.ModelAdmin):
+    list_display = ("date", "user", "status", "branch", "updated_by", "updated_at")
+    list_filter = ("date", "status", "branch")
+    search_fields = ("user__username", "user__first_name")
+    readonly_fields = ("updated_by",)
+
+    def save_model(self, request, obj, form, change):
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 class ServiceDetailInline(admin.TabularInline):

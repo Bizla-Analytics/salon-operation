@@ -1,4 +1,5 @@
 import csv, io
+from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
@@ -14,6 +15,7 @@ from .models import *
 from .forms import *
 from .timing import adopt_legacy_active_segment, close_segment, start_segment
 from .decorators import roles_required
+from .roster import working_branch
 from .workflow import (
     CONSULTATION_CODE,
     OPENING_TASK_TYPES,
@@ -22,7 +24,7 @@ from .workflow import (
     rebuild_service_tasks,
 )
 
-def user_branch(user): return getattr(getattr(user,'profile',None),'branch',None)
+def user_branch(user): return working_branch(user)
 
 def health(request):
     with connection.cursor() as cursor:
@@ -39,7 +41,10 @@ def with_progress(queryset):
 def dashboard(request):
     p=request.user.profile
     if request.user.is_superuser or p.role=='ADMIN': return redirect('admin_dashboard')
-    if p.role=='MANAGER': return redirect('manager_dashboard')
+    if p.role=='GENERAL_MANAGER':
+        return redirect('manager_dashboard' if user_branch(request.user) else 'branch_roster')
+    if p.role=='MANAGER':
+        return redirect('manager_dashboard') if user_branch(request.user) else render(request, 'operations/off_duty.html')
     return redirect('employee_dashboard')
 
 def logout_view(request): logout(request); return redirect('login')
@@ -49,7 +54,7 @@ def admin_dashboard(request):
     return render(request,'operations/admin_dashboard.html',{'branches':Branch.objects.count(),'users':User.objects.count(),'services':Service.objects.count(),'sop_tasks':OperationalTask.objects.count()})
 
 
-@roles_required('ADMIN')
+@roles_required('ADMIN', 'GENERAL_MANAGER')
 def admin_reports(request):
     """Business-wide operational reporting without exposing edit controls."""
     visits = Visit.objects.all()
@@ -135,7 +140,7 @@ def admin_reports(request):
     })
 
 
-@roles_required('ADMIN')
+@roles_required('ADMIN', 'GENERAL_MANAGER')
 def admin_visits(request):
     """Searchable, read-only visit cards for administrators."""
     query = request.GET.get('q', '').strip()
@@ -251,7 +256,51 @@ def create_user(request):
             u=User.objects.create_user(username=form.cleaned_data['username'],password=form.cleaned_data['password'],first_name=form.cleaned_data['first_name'])
             p=u.profile; p.role=form.cleaned_data['role']; p.branch=form.cleaned_data['branch']; p.employee_code=form.cleaned_data['employee_code']; p.job_title=form.cleaned_data['job_title']; p.save()
         messages.success(request,'User created.'); return redirect('create_user')
-    return render(request,'operations/form.html',{'form':form,'title':'Add manager or employee'})
+    return render(request,'operations/form.html',{'form':form,'title':'Add team member'})
+
+
+@roles_required('ADMIN', 'GENERAL_MANAGER')
+def branch_roster(request):
+    today = timezone.localdate()
+    form = BranchDutyForm(request.POST or None, initial={
+        'start_date': today, 'end_date': today, 'status': 'WORK',
+    })
+    if request.method == 'POST' and form.is_valid():
+        user = form.cleaned_data['user']
+        branch = form.cleaned_data['branch']
+        status = form.cleaned_data['status']
+        first = form.cleaned_data['start_date']
+        last = form.cleaned_data['end_date']
+        with transaction.atomic():
+            # Lock the person while validating and writing all daily rows.
+            User.objects.select_for_update().get(pk=user.pk)
+            if first == today and user.profile.role == 'EMPLOYEE' and (
+                status == 'LEAVE' or user_branch(user) != branch
+            ) and VisitService.objects.filter(
+                employee=user, status__in=['ASSIGNED', 'IN_PROGRESS', 'PAUSED']
+            ).exclude(visit__branch=branch).exists():
+                form.add_error('user', 'Reassign this employee’s open services before moving them or recording leave today.')
+            else:
+                day = first
+                while day <= last:
+                    BranchDuty.objects.update_or_create(
+                        user=user, date=day,
+                        defaults={
+                            'status': status,
+                            'branch': branch if status == 'WORK' else None,
+                            'updated_by': request.user,
+                        },
+                    )
+                    day += timedelta(days=1)
+        if not form.errors:
+            messages.success(request, 'Branch roster updated.')
+            return redirect('branch_roster')
+    duties = BranchDuty.objects.filter(date__gte=today).select_related(
+        'user__profile__branch', 'branch', 'updated_by'
+    ).order_by('date', 'user__username')[:200]
+    return render(request, 'operations/branch_roster.html', {
+        'form': form, 'duties': duties, 'today': today,
+    })
 
 CSV_MODELS={'branches':(Branch,['code','name','address','phone','active']), 'services':(Service,['code','name','category','standard_duration_minutes','base_price','active']), 'chairs':(Chair,['branch','code','name','active']), 'sop_tasks':(SOPTask,['service','sequence','phase','task_type','title','instructions','required','can_skip','skip_reason_required','quick_action','active'])}
 @roles_required('ADMIN')
@@ -384,7 +433,7 @@ def verify_service(request,pk):
     if request.method=='POST' and form.is_valid():
         if vs.tasks.filter(required=True).exclude(status='COMPLETED').exists():
             messages.error(request,'Required tasks are not completed.'); return redirect('verify_service',pk=pk)
-        vs.status='VERIFIED'; vs.manager_notes=form.cleaned_data['manager_notes']; vs.verified_at=timezone.now(); vs.save()
+        vs.status='VERIFIED'; vs.manager_notes=form.cleaned_data['manager_notes']; vs.verified_at=timezone.now(); vs.verified_by=request.user; vs.save()
         if not vs.visit.services.exclude(status='CANCELLED').exclude(status='VERIFIED').exists(): vs.visit.status='VERIFIED'; vs.visit.save(update_fields=['status'])
         messages.success(request,'Service verified.'); return redirect('manager_dashboard')
     return render(request,'operations/verify.html',{'vs':vs,'form':form})
@@ -578,6 +627,7 @@ def collect_feedback(request, visit_id):
 def employee_dashboard(request):
     jobs=(with_progress(VisitService.objects.filter(
         employee=request.user,
+        visit__branch=user_branch(request.user),
         status__in=['ASSIGNED','IN_PROGRESS','PAUSED'],
     )).select_related('visit__customer','service','chair')
         .order_by('visit__created_at','visit_id','order_number','id'))
@@ -701,7 +751,7 @@ def task_action(request,pk,action):
 @roles_required('EMPLOYEE')
 @require_POST
 def finish_service(request,pk):
-    vs=get_object_or_404(VisitService,pk=pk,employee=request.user,status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
+    vs=get_object_or_404(VisitService,pk=pk,employee=request.user,visit__branch=user_branch(request.user),status__in=['ASSIGNED','IN_PROGRESS','PAUSED'])
     if vs.tasks.exclude(status__in=['COMPLETED','SKIPPED']).exists(): messages.error(request,'Complete or skip the remaining tasks first.')
     else:
         vs.status='EMPLOYEE_DONE'; vs.employee_completed_at=timezone.now(); vs.employee_notes=request.POST.get('employee_notes',''); vs.save()

@@ -26,7 +26,7 @@ class Branch(TimeStamped):
 
 
 class Profile(TimeStamped):
-    ROLE_CHOICES = [("ADMIN", "Admin"), ("MANAGER", "Manager"), ("EMPLOYEE", "Employee")]
+    ROLE_CHOICES = [("ADMIN", "Admin"), ("GENERAL_MANAGER", "General manager"), ("MANAGER", "Manager"), ("EMPLOYEE", "Employee")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="EMPLOYEE")
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, null=True, blank=True)
@@ -37,6 +37,42 @@ class Profile(TimeStamped):
 
     def __str__(self):
         return f"{self.user.username} ({self.role})"
+
+
+class BranchDuty(TimeStamped):
+    """One person's effective workplace for one local calendar day.
+
+    An explicit leave record overrides the home branch. One row per person/day
+    makes conflicting simultaneous branch assignments impossible at the DB level.
+    """
+
+    STATUS_CHOICES = [("WORK", "Working"), ("LEAVE", "On leave")]
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="branch_duties")
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="WORK")
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, null=True, blank=True)
+    updated_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="roster_changes")
+
+    class Meta:
+        ordering = ["date", "user__username"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "date"], name="one_branch_duty_per_person_day"),
+            models.CheckConstraint(
+                condition=(models.Q(status="WORK", branch__isnull=False) | models.Q(status="LEAVE", branch__isnull=True)),
+                name="valid_branch_duty_status_branch",
+            ),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.status == "WORK" and not self.branch_id:
+            raise ValidationError({"branch": "Choose a working branch."})
+        if self.status == "LEAVE" and self.branch_id:
+            raise ValidationError({"branch": "Leave must not have a working branch."})
+
+    def __str__(self):
+        return f"{self.user} - {self.date}: {self.branch or self.get_status_display()}"
 
 
 class Chair(TimeStamped):

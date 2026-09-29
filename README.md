@@ -4,7 +4,8 @@ A responsive Django application for salon operations with separate admin, manage
 
 ## Included
 
-- Multi-branch master data and branch-isolated manager/employee access
+- Multi-branch master data and date-based branch-isolated manager/employee access
+- General-manager accounts and a branch duty roster for temporary cover and leave
 - Admin CRUD through Django Admin
 - CSV insert/update import for branches, chairs, services, and SOP tasks
 - Admin creation of managers and employees by branch
@@ -56,6 +57,24 @@ Change all passwords before real use.
 - `/admin-panel/` — simplified admin landing page
 - `/manager/` — manager live operations
 - `/employee/` — employee work list
+- `/admin-panel/roster/` — branch duty roster (admin and general manager)
+
+## Branch cover and leave
+
+Create a separate account for each person; do not share a branch-manager login.
+An admin can create a `GENERAL_MANAGER` account from **Add team member**. The
+general manager can view business-wide visits and reports, maintain the roster,
+and use manager operations only for the branch where they have a working duty
+for the current local calendar day. They do not receive Django admin or user
+creation rights.
+
+Use **Branch roster** to record a working branch or leave for one person for up
+to 31 consecutive whole days. A dated duty overrides the person's home branch.
+Without a duty, managers and employees remain at their home branch; general
+managers have no acting branch. A person cannot be assigned to two branches on
+the same day. Reassign an employee's open services before moving them or
+recording leave for today. Existing visit and task history remains at its
+original branch and retains the individual actor's identity.
 
 ## CSV import
 

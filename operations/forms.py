@@ -2,8 +2,11 @@ from django import forms
 from django.contrib.auth.models import User
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.db.models import Q
+from datetime import timedelta
+from django.utils import timezone
 
 from .models import Branch, Chair, Invoice, Profile, Service, Visit, VisitService
+from .roster import working_employees
 
 
 class BootstrapMixin:
@@ -59,12 +62,7 @@ class VisitServiceAssignmentForm(BootstrapMixin, forms.ModelForm):
         current_chair = self.instance.chair_id if self.instance.pk else None
         self.fields["service"].queryset = Service.objects.filter(Q(active=True) | Q(pk=current_service)).distinct()
         self.fields["employee"].queryset = User.objects.filter(
-            Q(pk=current_employee) | Q(
-                profile__branch=branch,
-                profile__role="EMPLOYEE",
-                profile__active=True,
-                is_active=True,
-            )
+            Q(pk=current_employee) | Q(pk__in=working_employees(branch).values("pk"))
         ).distinct()
         self.fields["chair"].queryset = Chair.objects.filter(
             Q(pk=current_chair) | Q(branch=branch, active=True)
@@ -145,9 +143,7 @@ class CancelAndReassignForm(BootstrapMixin, forms.Form):
 
     def __init__(self, *args, branch=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["employee"].queryset = User.objects.filter(
-            profile__branch=branch, profile__role="EMPLOYEE", profile__active=True, is_active=True
-        )
+        self.fields["employee"].queryset = working_employees(branch)
         self.fields["chair"].queryset = Chair.objects.filter(branch=branch, active=True)
 
 
@@ -175,6 +171,40 @@ class UserCreateForm(BootstrapMixin, forms.Form):
     first_name = forms.CharField()
     password = forms.CharField(widget=forms.PasswordInput)
     role = forms.ChoiceField(choices=Profile.ROLE_CHOICES)
-    branch = forms.ModelChoiceField(queryset=Branch.objects.filter(active=True))
+    branch = forms.ModelChoiceField(queryset=Branch.objects.filter(active=True), required=False, label="Home branch")
     employee_code = forms.CharField(required=False)
     job_title = forms.CharField(required=False)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("role") in ("MANAGER", "EMPLOYEE") and not cleaned.get("branch"):
+            self.add_error("branch", "Choose a home branch for a manager or employee.")
+        return cleaned
+
+
+class BranchDutyForm(BootstrapMixin, forms.Form):
+    user = forms.ModelChoiceField(queryset=User.objects.none(), label="Team member")
+    start_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    end_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    status = forms.ChoiceField(choices=[("WORK", "Working at branch"), ("LEAVE", "On leave")])
+    branch = forms.ModelChoiceField(queryset=Branch.objects.filter(active=True), required=False, label="Working branch")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["user"].queryset = User.objects.filter(
+            is_active=True, profile__active=True,
+            profile__role__in=["GENERAL_MANAGER", "MANAGER", "EMPLOYEE"],
+        ).select_related("profile").order_by("first_name", "username")
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start_date"), cleaned.get("end_date")
+        if start and start < timezone.localdate():
+            self.add_error("start_date", "Past roster dates cannot be changed.")
+        if start and end and (end < start or end - start > timedelta(days=30)):
+            self.add_error("end_date", "Choose up to 31 consecutive days.")
+        if cleaned.get("status") == "WORK" and not cleaned.get("branch"):
+            self.add_error("branch", "Choose a working branch.")
+        if cleaned.get("status") == "LEAVE" and cleaned.get("branch"):
+            self.add_error("branch", "Leave must not have a working branch.")
+        return cleaned

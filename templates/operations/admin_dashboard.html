@@ -21,7 +21,8 @@
 <section>
   <h2 class="section-title">Setup</h2>
   <div class="action-grid">
-    <a class="action-card" href="{% url 'create_user' %}"><i>＋</i><strong>Add team member</strong><span>Create a manager or employee account</span></a>
+    <a class="action-card" href="{% url 'create_user' %}"><i>＋</i><strong>Add team member</strong><span>Create a general manager, manager, or employee account</span></a>
+    <a class="action-card" href="{% url 'branch_roster' %}"><i>▦</i><strong>Branch roster</strong><span>Plan manager and employee cover or leave</span></a>
     <a class="action-card" href="{% url 'csv_import' %}"><i>⇧</i><strong>Import master data</strong><span>Update services, chairs and SOP tasks</span></a>
     <a class="action-card" href="{% url 'service_catalog' %}"><i>≡</i><strong>Service catalogue</strong><span>Inspect service procedures and resources</span></a>
   </div>
