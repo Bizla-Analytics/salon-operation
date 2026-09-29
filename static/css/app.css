@@ -55,3 +55,11 @@ input:disabled,select:disabled,textarea:disabled{background:#edf1ef!important;co
 .brand>span{background:var(--accent)}
 @media(max-width:900px){.mobile-appbar .brand{position:absolute;left:50%;transform:translateX(-50%);gap:7px;font-size:.96rem;max-width:60vw}.mobile-appbar .brand-mark{width:44px;height:44px}.mobile-appbar .brand strong{display:inline;font-size:1.05rem}}
 @media(max-width:420px){.mobile-appbar .brand-mark{width:38px;height:38px}.mobile-appbar .brand strong{font-size:.86rem;letter-spacing:.05em}}
+
+/* Keep account controls visible even when the administration menu is tall. */
+.sidebar{overflow-y:auto}
+.desktop-session-bar{position:sticky;top:0;z-index:15;min-height:58px;display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:8px 44px;background:var(--card);border-bottom:1px solid var(--line)}
+.desktop-session-bar span{color:var(--muted);font-size:.85rem}
+.desktop-session-bar strong{color:var(--ink)}
+.desktop-session-bar .button{border-color:#b8c9c4}
+@media(max-width:900px){.desktop-session-bar{display:none}}
