@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Service catalogue · Hairship{% endblock %}
 {% block content %}
-<header class="page-head"><span class="eyebrow">Administration</span><h1>Service catalogue</h1><p>Review the complete SOP, inventory consumption and equipment time for a service.</p></header>
+<header class="page-head"><span class="eyebrow">Operations reference</span><h1>Service catalogue</h1><p>Review the complete SOP, inventory consumption and equipment time for a service.</p></header>
 <section class="panel service-picker"><form method="get" class="lookup-form"><div>{{ form.service.label_tag }}{{ form.service }}{{ form.service.errors }}</div><button class="button primary" type="submit">Show service plan</button></form></section>
 {% if selected %}
 <header class="catalogue-head"><div><span class="eyebrow">{{ selected.code }} · {{ selected.category }}</span><h2>{{ selected.name }}</h2><p>{{ selected.customer_type }} · {{ selected.service_type }} · {{ selected.standard_duration_minutes }} standard minutes</p></div></header>

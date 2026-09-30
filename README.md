@@ -58,6 +58,7 @@ Change all passwords before real use.
 - `/manager/` — manager live operations
 - `/employee/` — employee work list
 - `/admin-panel/roster/` — branch duty roster (admin and general manager)
+- `/general-manager/` — general-management overview
 
 ## Branch cover and leave
 
@@ -154,7 +155,7 @@ then one consultation, followed by procedures in the manager-defined service
 order. Before work starts, the manager can add services at the beginning or end,
 reorder them, or change the employee and chair assignment.
 
-Admins can open **Service catalogue** from the application sidebar, choose a
+Admins, general managers, and managers can open the read-only **Service catalogue** from the application sidebar, choose a
 service, and inspect its sub-services, tasks, inventory quantities, active/passive
 time, equipment time, and utility time.
 

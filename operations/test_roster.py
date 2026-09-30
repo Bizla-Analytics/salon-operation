@@ -40,7 +40,7 @@ class BranchRosterTests(TestCase):
         self.assertEqual(self.client.get(reverse("manager_dashboard")).status_code, 403)
         roster_page = self.client.get(reverse("branch_roster"))
         self.assertEqual(roster_page.status_code, 200)
-        self.assertContains(roster_page, "Assign working branch first")
+        self.assertContains(roster_page, "No branch assigned today")
         self.assertNotContains(roster_page, f'href="{reverse("manager_dashboard")}"')
         self.assertEqual(self.client.get(reverse("admin_reports")).status_code, 200)
         self.assertEqual(self.client.get(reverse("create_user")).status_code, 403)
@@ -55,6 +55,25 @@ class BranchRosterTests(TestCase):
         visit = Visit.objects.get(customer__name="Roster Customer")
         self.assertEqual(visit.branch, self.b)
         self.assertEqual(visit.created_by, self.gm)
+
+    def test_general_manager_overview_is_distinct_from_roster(self):
+        self.client.force_login(self.gm)
+        self.assertRedirects(self.client.get(reverse("dashboard")), reverse("general_manager_dashboard"))
+        response = self.client.get(reverse("general_manager_dashboard"))
+        self.assertContains(response, "Business overview")
+        self.assertContains(response, "Set today's branch")
+        self.assertNotContains(response, 'name="start_date"')
+        nav = response.content.decode().split("<nav>", 1)[1].split("</nav>", 1)[0]
+        self.assertEqual(nav.count(f'href="{reverse("branch_roster")}"'), 1)
+
+    def test_service_catalogue_available_to_managers_but_not_employees(self):
+        for user in [self.admin, self.gm, self.manager]:
+            self.client.force_login(user)
+            response = self.client.get(reverse("service_catalog"))
+            self.assertContains(response, "Service catalogue")
+            self.assertContains(response, f'href="{reverse("service_catalog")}"')
+        self.client.force_login(self.employee)
+        self.assertEqual(self.client.get(reverse("service_catalog")).status_code, 403)
 
     def test_admin_creates_general_manager_without_django_admin_privileges(self):
         self.client.force_login(self.admin)

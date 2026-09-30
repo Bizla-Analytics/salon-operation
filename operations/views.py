@@ -41,8 +41,7 @@ def with_progress(queryset):
 def dashboard(request):
     p=request.user.profile
     if request.user.is_superuser or p.role=='ADMIN': return redirect('admin_dashboard')
-    if p.role=='GENERAL_MANAGER':
-        return redirect('manager_dashboard' if user_branch(request.user) else 'branch_roster')
+    if p.role=='GENERAL_MANAGER': return redirect('general_manager_dashboard')
     if p.role=='MANAGER':
         return redirect('manager_dashboard') if user_branch(request.user) else render(request, 'operations/off_duty.html')
     return redirect('employee_dashboard')
@@ -52,6 +51,16 @@ def logout_view(request): logout(request); return redirect('login')
 @roles_required('ADMIN')
 def admin_dashboard(request):
     return render(request,'operations/admin_dashboard.html',{'branches':Branch.objects.count(),'users':User.objects.count(),'services':Service.objects.count(),'sop_tasks':OperationalTask.objects.count()})
+
+
+@roles_required('GENERAL_MANAGER')
+def general_manager_dashboard(request):
+    return render(request, 'operations/general_manager_dashboard.html', {
+        'acting_branch': user_branch(request.user),
+        'branches': Branch.objects.filter(active=True).count(),
+        'active_visits': Visit.objects.filter(status__in=['WAITING', 'ASSIGNED', 'IN_PROGRESS', 'EMPLOYEE_DONE']).count(),
+        'services': Service.objects.filter(active=True).count(),
+    })
 
 
 @roles_required('ADMIN', 'GENERAL_MANAGER')
@@ -227,7 +236,7 @@ def admin_visits(request):
         'filters': {'q': query, 'branch': branch_id, 'service': service_id, 'status': status},
     })
 
-@roles_required('ADMIN')
+@roles_required('ADMIN', 'GENERAL_MANAGER', 'MANAGER')
 def service_catalog(request):
     form=ServiceLookupForm(request.GET or None)
     selected=None; sections=[]; totals={'labour':0,'passive':0,'equipment':0,'utility':0}

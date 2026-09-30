@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}General management · Hairship{% endblock %}
+{% block content %}
+<header class="page-head">
+  <span class="eyebrow">General management</span>
+  <h1>Business overview</h1>
+  <p>Review operations across branches and manage today's branch cover.</p>
+</header>
+<section class="metrics">
+  <article><small>Active branches</small><strong>{{ branches }}</strong></article>
+  <article><small>Live visits</small><strong>{{ active_visits }}</strong></article>
+  <article><small>Active services</small><strong>{{ services }}</strong></article>
+  <article><small>Acting branch today</small><strong>{% if acting_branch %}{{ acting_branch.name }}{% else %}None{% endif %}</strong></article>
+</section>
+<section>
+  <h2 class="section-title">Branch management</h2>
+  <div class="panel">
+    {% if acting_branch %}
+      <p>You are working as manager at <strong>{{ acting_branch.name }}</strong> today.</p>
+      <a class="button primary" href="{% url 'manager_dashboard' %}">Open live operations</a>
+    {% else %}
+      <p>No working branch is assigned to you today. Set a duty before using acting-manager operations.</p>
+      <a class="button primary" href="{% url 'branch_roster' %}">Set today's branch</a>
+    {% endif %}
+  </div>
+</section>
+<section>
+  <h2 class="section-title">Business-wide views</h2>
+  <div class="action-grid">
+    <a class="action-card" href="{% url 'admin_visits' %}"><i>☷</i><strong>All visits</strong><span>Review visits across branches</span></a>
+    <a class="action-card" href="{% url 'admin_reports' %}"><i>▥</i><strong>Reports</strong><span>See performance and timing summaries</span></a>
+    <a class="action-card" href="{% url 'service_catalog' %}"><i>≡</i><strong>Service catalogue</strong><span>Inspect services and operating procedures</span></a>
+  </div>
+</section>
+{% endblock %}

@@ -63,3 +63,4 @@ input:disabled,select:disabled,textarea:disabled{background:#edf1ef!important;co
 .desktop-session-bar strong{color:var(--ink)}
 .desktop-session-bar .button{border-color:#b8c9c4}
 @media(max-width:900px){.desktop-session-bar{display:none}}
+.sidebar-note{padding:8px 12px;color:#c7dad5;font-size:.83rem}
