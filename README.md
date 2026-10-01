@@ -155,9 +155,58 @@ then one consultation, followed by procedures in the manager-defined service
 order. Before work starts, the manager can add services at the beginning or end,
 reorder them, or change the employee and chair assignment.
 
+Employees can run services from different visits at the same time and use
+**Back to my services** to switch visits without stopping task timers. Each
+staff card shows the customer, service, visit number, and service order. Later
+services in the same visit stay locked until earlier services are submitted;
+only one hands-on task per visit can run at a time. Processing-enabled tasks
+still support separate hands-on and waiting intervals.
+
 Admins, general managers, and managers can open the read-only **Service catalogue** from the application sidebar, choose a
 service, and inspect its sub-services, tasks, inventory quantities, active/passive
 time, equipment time, and utility time.
+
+## Workflow safeguards and measured timing
+
+Confirming a visit opening check locks that service's assignment and position;
+upcoming services can still be edited after the locked prefix. A permitted skip,
+with a reason when required, counts as resolved during submission and verification.
+Verification cannot reopen invoiced, closed or cancelled visits.
+
+An employee may finish their own carried-over assignments from an expired cover
+duty when the assignment date and branch match that recorded duty. Previously
+assigned home-branch work also remains accessible when starting a cover duty. This does not
+grant access to other branch records, and an explicit leave day still blocks work.
+
+Managers see total task time, hands-on working time and waiting time on the live
+overview, review and detail pages. Total task time sums working and waiting
+intervals; it is not visit wall-clock time. Staff see workflow controls and progress,
+but no measured time or stopwatch. Admin/general-manager detail pages are read-only
+application pages and do not require Django Admin access; the native management
+link appears only for accounts with Django staff/module permissions.
+
+The manager live overview uses compact cards: customer and status, a short
+Total / Working / Waiting strip, ordered service/staff/chair rows, and the next
+action in the header. There is no visit-details button or repeated action footer.
+Cancelled assignments are collapsed, and Edit is shown only for upcoming work
+that can still be changed.
+
+## Personal account and appearance
+
+Every signed-in role has a profile icon in the navigation bar. Open it to see
+the account name, open **Profile**, switch between light and dark mode, or sign
+out. Light is the default; an explicitly chosen theme is remembered per account
+in that browser. Sign out is available in the profile menu, not the sidebar. The profile
+page edits first/last name, email and mobile; roles and branch assignments remain
+administrator-controlled. Password changes require the current password and
+keep the current session signed in.
+
+Managers have an **All staff** sidebar link for their current branch's employees,
+including home-branch staff on leave or working elsewhere and today's visiting
+cover staff. General managers can use it while rostered as acting branch manager.
+
+The account-menu JavaScript unit tests can also be run with
+`node --test tests/accounts.test.cjs`.
 
 ## Git workflow
 

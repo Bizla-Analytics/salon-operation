@@ -6,6 +6,15 @@ SANITISATION_CODE = "SUB025"
 OPENING_TASK_TYPES = ("HYGIENE", "CONSULT")
 
 
+def unfinished_verification_tasks(tasks):
+    """An explicitly permitted skip satisfies the SOP with its required reason."""
+    from django.db.models import Q
+    allowed_skip = Q(status='SKIPPED', can_skip=True) & (
+        Q(skip_reason_required=False) | ~Q(skip_reason='')
+    )
+    return tasks.exclude(Q(status='COMPLETED') | allowed_skip)
+
+
 def _task_type(sub_service_code):
     if sub_service_code == CONSULTATION_CODE:
         return "CONSULT", "BEFORE"

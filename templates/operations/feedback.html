@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Your experience · Hairship{% endblock %}
 {% block content %}
-<div class="narrow centered">
+<div class="narrow centered feedback-page">
   <header class="page-head" style="text-align:center">
     <span class="eyebrow">Customer feedback</span>
     <h1>How was your experience?</h1>
@@ -16,7 +16,7 @@
           {% for n in '12345' %}
             <input type="radio" id="q{{ q.id }}_{{ n }}" name="q_{{ q.id }}" value="{{ n }}" required>
             <label for="q{{ q.id }}_{{ n }}" title="{% if n == '1' %}Very poor{% elif n == '2' %}Poor{% elif n == '3' %}Okay{% elif n == '4' %}Good{% else %}Excellent{% endif %}">
-              <span class="emoji">{% if n == '1' %}😣{% elif n == '2' %}🙁{% elif n == '3' %}😐{% elif n == '4' %}😊{% else %}🤩{% endif %}</span>
+              <span class="emoji" aria-hidden="true">{% if n == '1' %}😞{% elif n == '2' %}🙁{% elif n == '3' %}😐{% elif n == '4' %}🙂{% else %}😀{% endif %}</span>
               <small>{% if n == '1' %}Very poor{% elif n == '2' %}Poor{% elif n == '3' %}Okay{% elif n == '4' %}Good{% else %}Excellent{% endif %}</small>
             </label>
           {% endfor %}
@@ -27,7 +27,7 @@
       <label>Suggestion (optional)</label>
       <textarea name="suggestion" class="form-control" rows="3" placeholder="Tell us what would make your next visit even better"></textarea>
     </p>
-    {% if manager_collection %}<div class="verification-actions"><a class="button outline large" href="{% url 'manager_dashboard' %}">Back to overview</a><button class="button dark large" type="submit" name="action" value="close_visit" formnovalidate onclick="return confirm('Close this visit without collecting feedback?');">Close without feedback</button><button class="button primary large" type="submit" name="action" value="save_feedback">Complete feedback</button></div>{% else %}<button class="button primary large block">Submit feedback</button>{% endif %}
+    {% if manager_collection %}<div class="feedback-actions"><a class="button outline" href="{% url 'manager_dashboard' %}">Back to overview</a><button class="button dark" type="submit" name="action" value="close_visit" formnovalidate onclick="return confirm('Close this visit without collecting feedback?');">Close without feedback</button><button class="button primary" type="submit" name="action" value="save_feedback">Complete feedback</button></div>{% else %}<button class="button primary large block">Submit feedback</button>{% endif %}
   </form>
 </div>
 {% endblock %}

@@ -1,36 +1,27 @@
 {% extends 'base.html' %}
 {% block title %}Service assignments · Hairship{% endblock %}
 {% block content %}
+<div class="workflow-page">
 <header class="page-head split">
-  <div><span class="eyebrow">Manager</span><h1>{{ title }}</h1><p>One staff member and one chair can be selected for each service. Started work is locked.</p></div>
-  <a href="{% url 'manager_dashboard' %}" class="button outline">Back</a>
+  <div><span class="eyebrow">Step 2 of 2 · Service plan</span><h1>Service assignments</h1><p>Choose services, staff and chairs in the order they should be performed.</p></div>
+  <a href="{% url 'manager_dashboard' %}" class="button outline workflow-back">Back to visits</a>
 </header>
+<section class="workflow-customer-summary" aria-label="Customer visit"><div><strong>{{ visit.customer.name }}</strong><span>Visit #{{ visit.pk }}{% if visit.customer.mobile %} · {{ visit.customer.mobile }}{% endif %}</span></div><span class="status {{ visit.status|lower }}">{{ visit.get_status_display }}</span></section>
 <form method="post" class="visit-builder" id="assignment-form">
   {% csrf_token %}{{ formset.management_form }}{{ formset.non_form_errors }}
   <section class="panel assignment-list">
-    <div class="assignment-head"><b>Order</b><b>Service</b><b>Staff</b><b>Chair</b><b>Action</b></div>
+    <header class="workflow-section-head"><h2>Service plan</h2><p>Lower order numbers run first. Started or completed work stays locked.</p></header>
     <div id="assignment-rows">
     {% for form in formset %}
-      <div class="assignment-row {% if form.instance.pk and form.instance.status != 'ASSIGNED' %}locked{% endif %}">
-        {{ form.id }}
-        <div>{{ form.order_number }}{{ form.order_number.errors }}</div>
-        <div><div class="service-combobox" data-selected-label="{% if form.instance.service_id %}{{ form.instance.service }}{% endif %}"><input type="text" class="form-control service-combobox-input" value="{% if form.instance.service_id %}{{ form.instance.service }}{% endif %}" placeholder="Type service name or code" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"><div class="service-combobox-menu" role="listbox"></div>{{ form.service }}</div>{{ form.service.errors }}</div>
-        <div>{{ form.employee }}{{ form.employee.errors }}</div>
-        <div>{{ form.chair }}{{ form.chair.errors }}</div>
-        <div class="assignment-action">
-          {% if form.instance.pk and form.instance.status != 'ASSIGNED' %}
-            <span class="status {{ form.instance.status|lower }}">{{ form.instance.get_status_display }}</span>
-            {% if form.instance.status == 'IN_PROGRESS' or form.instance.status == 'PAUSED' %}<a class="button outline" href="{% url 'cancel_and_reassign_service' form.instance.pk %}">Cancel &amp; reassign</a>{% endif %}
-          {% else %}<label class="delete-label">{{ form.DELETE }} Remove</label>{% endif %}
-        </div>
-      </div>
+      {% include 'includes/assignment_row.html' %}
     {% endfor %}
     </div>
-    <template id="empty-assignment-row"><div class="assignment-row">{{ formset.empty_form.id }}<div>{{ formset.empty_form.order_number }}</div><div><div class="service-combobox"><input type="text" class="form-control service-combobox-input" placeholder="Type service name or code" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"><div class="service-combobox-menu" role="listbox"></div>{{ formset.empty_form.service }}</div></div><div>{{ formset.empty_form.employee }}</div><div>{{ formset.empty_form.chair }}</div><div class="assignment-action"><label class="delete-label">{{ formset.empty_form.DELETE }} Remove</label></div></div></template>
+    <template id="empty-assignment-row">{% include 'includes/assignment_row.html' with form=formset.empty_form %}</template>
     <button type="button" class="button outline" id="add-assignment">+ Add another service</button>
   </section>
-  <button class="button primary large">Save service assignments</button>
+  <div class="workflow-submit workflow-submit-bar"><p>Services within this visit run one at a time, in your chosen order.</p><button type="submit" class="button primary">Save service assignments</button></div>
 </form>
+</div>
 <script>
 (function(){
   var add=document.getElementById('add-assignment'), rows=document.getElementById('assignment-rows');
@@ -39,6 +30,9 @@
     var box=row.querySelector('.service-combobox'), input=box&&box.querySelector('.service-combobox-input');
     var menu=box&&box.querySelector('.service-combobox-menu'), select=box&&box.querySelector('select');
     if(!box||!input||!menu||!select){return;}
+    var label=document.getElementById(input.getAttribute('aria-labelledby'));
+    if(label){label.setAttribute('for',input.id);}
+    select.setAttribute('aria-labelledby',input.getAttribute('aria-labelledby'));
     var options=[], active=-1;
     for(var i=0;i<select.options.length;i++){
       if(select.options[i].value){options.push({value:select.options[i].value,text:select.options[i].text});}
@@ -47,8 +41,15 @@
     if(!input.value&&box.getAttribute('data-selected-label')){input.value=box.getAttribute('data-selected-label');}
     box.className+=' combobox-ready';
     if(select.disabled){input.disabled=true;return;}
-    function close(){menu.innerHTML='';menu.style.display='none';input.setAttribute('aria-expanded','false');active=-1;}
-    function choose(option){select.value=option.value;input.value=option.text;close();}
+    input.required=select.required;select.required=false;
+    var remove=row.querySelector('input[name$="-DELETE"]'), controls=row.querySelectorAll('input,select,textarea');
+    if(remove){
+      for(var c=0;c<controls.length;c++){controls[c]._assignmentRequired=controls[c].required;}
+      function markRemoved(){row.setAttribute('data-removed',remove.checked?'true':'false');for(var c=0;c<controls.length;c++){controls[c].required=remove.checked?false:controls[c]._assignmentRequired;}}
+      remove.onchange=markRemoved;markRemoved();
+    }
+    function close(){menu.innerHTML='';menu.style.display='none';input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');active=-1;}
+    function choose(option){select.value=option.value;input.value=option.text;input.focus();close();}
     function render(){
       var query=(input.value||'').toLowerCase(), matches=[];
       for(var j=0;j<options.length&&matches.length<30;j++){
@@ -57,16 +58,17 @@
       menu.innerHTML='';active=-1;
       if(!matches.length){var empty=document.createElement('div');empty.className='combobox-empty';empty.appendChild(document.createTextNode('No matching service'));menu.appendChild(empty);}
       for(var k=0;k<matches.length;k++){
-        (function(option){var item=document.createElement('button');item.type='button';item.className='combobox-option';item.setAttribute('role','option');item.appendChild(document.createTextNode(option.text));
-          function selectNow(event){if(event&&event.preventDefault){event.preventDefault();}choose(option);return false;}
-          item.onmousedown=selectNow;item.ontouchstart=selectNow;item.onclick=function(){choose(option);};menu.appendChild(item);}(matches[k]));
+        (function(option){var item=document.createElement('button');item.type='button';item.className='combobox-option';item.id=menu.id+'-'+option.value;item.setAttribute('role','option');item.setAttribute('aria-selected','false');item.appendChild(document.createTextNode(option.text));
+          item.onmousedown=function(event){if(event&&event.preventDefault){event.preventDefault();}};
+          item.onclick=function(){choose(option);};menu.appendChild(item);}(matches[k]));
       }
       menu.style.display='block';input.setAttribute('aria-expanded','true');
     }
     function highlight(direction){
       var items=menu.querySelectorAll('.combobox-option');if(!items.length){return;}
       active=(active+direction+items.length)%items.length;
-      for(var j=0;j<items.length;j++){items[j].className='combobox-option'+(j===active?' active':'');}
+      for(var j=0;j<items.length;j++){items[j].className='combobox-option'+(j===active?' active':'');items[j].setAttribute('aria-selected',j===active?'true':'false');}
+      input.setAttribute('aria-activedescendant',items[active].id);
       items[active].scrollIntoView(false);
     }
     input.onfocus=function(){input.select();render();};
@@ -77,7 +79,8 @@
       else if(key==='Enter'||key===13){var items=menu.querySelectorAll('.combobox-option');if(active>=0&&items[active]){event.preventDefault();items[active].click();}}
       else if(key==='Escape'||key===27){close();}
     };
-    input.onblur=function(){setTimeout(close,250);};
+    function closeAfterFocusLeaves(){setTimeout(function(){if(!box.contains(document.activeElement)){close();}},250);}
+    input.onblur=closeAfterFocusLeaves;menu.onfocusout=closeAfterFocusLeaves;
   }
   var existing=rows.querySelectorAll('.assignment-row');
   for(var i=0;i<existing.length;i++){initialiseSearch(existing[i]);}
@@ -91,6 +94,7 @@
     initialiseSearch(rows.lastElementChild);
     var order=document.getElementById('id_services-'+index+'-order_number');
     if(order){order.value=nextOrder;}
+    var search=rows.lastElementChild.querySelector('.service-combobox-input');if(search){search.focus();}
   };
 }());
 </script>

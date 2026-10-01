@@ -1,1 +1,18 @@
-{% extends 'base.html' %}{% block title %}Verify service · Hairship{% endblock %}{% block content %}<header class="page-head"><span class="eyebrow">Quality control</span><h1>Verify completed service</h1><p>{{ vs.visit.customer.name }} · {{ vs.service.name }}</p></header><div class="panel narrow"><ul class="verify-list">{% for t in vs.tasks.all %}<li><span>{{ t.title }}{% if t.skip_reason %}<small class="muted">Skipped: {{ t.skip_reason }}</small>{% endif %}</span><span class="status {{ t.status|lower }}">{{ t.get_status_display }}</span></li>{% endfor %}</ul><form method="post" class="form-grid" style="margin-top:22px">{% csrf_token %}{{ form.as_p }}<button class="button success large">Approve service</button></form></div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Verify service · Hairship{% endblock %}
+{% block content %}
+<div class="workflow-page">
+  <header class="page-head split"><div><span class="eyebrow">Quality control</span><h1>Verify completed service</h1><p>Review the checklist and staff notes before approving.</p></div><a class="button outline workflow-back" href="{% url 'manager_dashboard' %}">Back to visits</a></header>
+  <section class="workflow-customer-summary" aria-label="Customer visit"><div><strong>{{ vs.visit.customer.name }}</strong><span>Visit #{{ vs.visit_id }} · Service {{ vs.order_number }}</span></div><span class="status {{ vs.status|lower }}">{{ vs.get_status_display }}</span></section>
+  <form method="post" class="visit-verification form-grid">
+    {% csrf_token %}{{ form.non_field_errors }}
+    <section class="panel verification-service">
+      <header><span class="order-badge">{{ vs.order_number }}</span><div><h2>{{ vs.service.name }}</h2><p class="muted">{{ vs.employee.get_full_name|default:vs.employee.username }} · {{ vs.chair.name|default:'No chair' }}</p></div></header>
+      {% include 'includes/workflow_timings.html' with obj=vs %}
+      {% include 'includes/workflow_checklist.html' with tasks=vs.tasks.all %}
+      <div class="note-grid"><div class="workflow-staff-note"><h3>Staff completion note</h3><p>{{ vs.employee_notes|default:'No note supplied.' }}</p></div><div class="workflow-manager-note">{% include 'includes/workflow_field.html' with field=form.manager_notes %}</div></div>
+    </section>
+    <div class="workflow-submit workflow-submit-bar"><p>Approval marks this service as manager verified.</p><button type="submit" class="button success">Approve service</button></div>
+  </form>
+</div>
+{% endblock %}

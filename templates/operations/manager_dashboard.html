@@ -1,31 +1,46 @@
 {% extends 'base.html' %}
 {% block title %}Live operations · Hairship{% endblock %}
 {% block content %}
-<header class="page-head split">
+<header class="page-head split manager-page-head">
   <div><span class="eyebrow">Today</span><h1>Live operations</h1><p>Track, verify, invoice, and collect feedback for every combined visit.</p></div>
   <a href="{% url 'new_visit' %}" class="button primary">+ New service visit</a>
 </header>
-<div class="visit-list">
+<div class="visit-list manager-visit-list">
   {% for visit in visits %}
-  <article class="visit-card">
-    <header>
-      <div><span class="status {{ visit.status|lower }}">{{ visit.get_status_display }}</span><h2>{{ visit.customer.name }}</h2><p>Arrived {{ visit.created_at|date:'H:i' }} · {{ visit.services.all|length }} assignment{{ visit.services.all|length|pluralize }}</p></div>
-      {% if visit.status == 'WAITING' or visit.status == 'ASSIGNED' or visit.status == 'IN_PROGRESS' or visit.status == 'EMPLOYEE_DONE' %}<a class="button outline" href="{% url 'edit_visit_services' visit.id %}">Edit upcoming assignments</a>{% endif %}
+  <article class="visit-card manager-visit-card">
+    <header class="manager-visit-head">
+      <div class="manager-customer">
+        <div class="manager-customer-title"><h2>{{ visit.customer.name }}</h2><span class="status {{ visit.status|lower }}">{{ visit.get_status_display }}</span></div>
+        <p>Visit #{{ visit.pk }} · Arrived {{ visit.created_at|date:'H:i' }} · {{ visit.active_service_count }} service{{ visit.active_service_count|pluralize }}</p>
+      </div>
+      <div class="manager-card-actions">
+        {% if visit.can_edit_assignments and visit.active_service_count %}<a class="button outline" href="{% url 'edit_visit_services' visit.id %}" title="Edit upcoming assignments" aria-label="Edit upcoming assignments for {{ visit.customer.name }}">Edit</a>{% endif %}
+        {% if visit.can_verify_all %}
+          <a class="button success" href="{% url 'verify_visit' visit.id %}" aria-label="Review and verify visit for {{ visit.customer.name }}">Review &amp; verify</a>
+        {% elif visit.status == 'VERIFIED' and visit.is_invoice_ready %}
+          <a class="button dark" href="{% url 'add_invoice' visit.id %}">Add invoice</a>
+        {% elif visit.status == 'INVOICED' %}
+          <a class="button primary" href="{% url 'collect_feedback' visit.id %}">Collect feedback</a>
+        {% elif visit.can_edit_assignments and not visit.active_service_count %}
+          <a class="button primary" href="{% url 'edit_visit_services' visit.id %}">Assign services</a>
+        {% endif %}
+      </div>
     </header>
-    {% for s in visit.services.all %}
-    <div class="service-row {% if s.status == 'CANCELLED' %}cancelled-row{% endif %}">
-      <span class="order-badge">{{ s.order_number }}</span>
-      <div class="service-main"><strong>{{ s.service.name }}</strong><span>{{ s.employee.first_name|default:s.employee.username }} · {{ s.chair|default:'No chair' }}</span>{% if s.cancellation_reason %}<small class="muted">Cancelled: {{ s.cancellation_reason }}</small>{% endif %}<div class="progress"><i style="width:{{ s.progress_percent }}%"></i></div></div>
-      <span class="status {{ s.status|lower }}">{{ s.get_status_display }}</span>
-      <div class="row-action">{% if s.status == 'IN_PROGRESS' or s.status == 'PAUSED' %}<a class="button outline" href="{% url 'cancel_and_reassign_service' s.id %}">Cancel &amp; reassign</a>{% endif %}</div>
-    </div>
+    <dl class="manager-timing-strip" aria-label="Measured task time">
+      <div><dt>Total</dt><dd title="Total task time: {{ visit.total_task_time }}" aria-label="{{ visit.total_task_time }}">{{ visit.total_time_short }}</dd></div>
+      <div><dt>Working</dt><dd title="Working time: {{ visit.working_time }}" aria-label="{{ visit.working_time }}">{{ visit.working_time_short }}</dd></div>
+      <div><dt>Waiting</dt><dd title="Waiting time: {{ visit.waiting_time }}" aria-label="{{ visit.waiting_time }}">{{ visit.waiting_time_short }}</dd></div>
+    </dl>
+    <div class="manager-service-list">
+    {% for s in visit.active_services %}
+      {% include 'includes/manager_service_row.html' %}
+    {% empty %}<p class="manager-no-services">No services assigned yet.</p>
     {% endfor %}
-    {% if visit.can_verify_all %}
-    <div class="visit-actions"><div><strong>Services submitted</strong><span>Review every service, task, and staff completion note in execution order.</span></div><a class="button success" href="{% url 'verify_visit' visit.id %}">Review and verify visit</a></div>
-    {% elif visit.status == 'VERIFIED' and visit.is_invoice_ready %}
-    <div class="visit-actions"><div><strong>All services verified</strong><span>Add the invoice number and confirm the customer details.</span></div><a class="button dark" href="{% url 'add_invoice' visit.id %}">Add invoice</a></div>
-    {% elif visit.status == 'INVOICED' %}
-    <div class="visit-actions"><div><strong>Invoice completed</strong><span>Hand the device to the customer when they are ready.</span></div><a class="button primary" href="{% url 'collect_feedback' visit.id %}">Collect feedback</a></div>
+    </div>
+    {% if visit.cancelled_services %}
+    <details class="manager-cancelled-history"><summary>{{ visit.cancelled_services|length }} cancelled assignment{{ visit.cancelled_services|length|pluralize }}</summary>
+      {% for s in visit.cancelled_services %}{% include 'includes/manager_service_row.html' %}{% endfor %}
+    </details>
     {% endif %}
   </article>
   {% empty %}<div class="empty-state"><b>All clear</b><span>No active visits right now.</span><a class="button primary" href="{% url 'new_visit' %}">Create first visit</a></div>{% endfor %}

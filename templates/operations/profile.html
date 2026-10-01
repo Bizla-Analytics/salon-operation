@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}My profile · Hairship{% endblock %}
+{% block content %}
+<header class="page-head"><span class="eyebrow">My account</span><h1>My profile</h1><p>Update your personal details and password.</p></header>
+<section class="panel account-summary">
+  <h2>{{ user.get_full_name|default:user.username }}</h2>
+  <dl class="profile-facts">
+    <div><dt>Username</dt><dd>{{ user.username }}</dd></div>
+    <div><dt>Role</dt><dd>{{ user.profile.get_role_display }}</dd></div>
+    <div><dt>Home branch</dt><dd>{{ user.profile.branch|default:'Not assigned' }}</dd></div>
+    <div><dt>Staff code</dt><dd>{{ user.profile.employee_code|default:'—' }}</dd></div>
+    <div><dt>Job title</dt><dd>{{ user.profile.job_title|default:'—' }}</dd></div>
+  </dl>
+  <p class="muted">Role, branch, staff code and job title are managed by your administrator.</p>
+</section>
+<div class="profile-grid">
+  <section class="panel"><h2>Personal details</h2><form method="post" class="form-grid">{% csrf_token %}<input type="hidden" name="action" value="details">{{ details_form.as_p }}<button class="button primary" type="submit">Save details</button></form></section>
+  <section class="panel"><h2>Change password</h2><p class="muted">Enter your current password to choose a new one.</p><form method="post" class="form-grid">{% csrf_token %}<input type="hidden" name="action" value="password">{{ password_form.as_p }}<button class="button primary" type="submit">Change password</button></form></section>
+</div>
+{% endblock %}

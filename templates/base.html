@@ -1,6 +1,6 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8,48 +8,57 @@
   <title>{% block title %}Hairship{% endblock %}</title>
   <link rel="icon" type="image/x-icon" href="{% static 'img/favicon.ico' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <script>
+    (function(){try{var key='hairship-theme-{{ user.pk|default:"guest" }}';var saved=localStorage.getItem(key);document.documentElement.dataset.theme=saved==='dark'?'dark':'light';}catch(e){document.documentElement.dataset.theme='light';}}());
+  </script>
+  <link rel="stylesheet" href="{% static 'css/accounts.css' %}">
+  <link rel="stylesheet" href="{% static 'css/workflows.css' %}">
+  <script src="{% static 'js/accounts.js' %}" defer></script>
 </head>
-<body>
+<body data-theme-key="hairship-theme-{{ user.pk|default:'guest' }}">
 {% if not plain_layout and user.is_authenticated and user.is_superuser or not plain_layout and user.is_authenticated and user.profile.role == 'ADMIN' or not plain_layout and user.is_authenticated and user.profile.role == 'GENERAL_MANAGER' or not plain_layout and user.is_authenticated and user.profile.role == 'MANAGER' %}
 <div class="app-shell">
   <aside class="sidebar" id="app-sidebar">
-    <div class="sidebar-head"><a class="brand" href="{% url 'dashboard' %}" aria-label="Hair Ship home"><img class="brand-mark" src="{% static 'img/hairship-logo.png' %}" alt=""><strong>HAIR SHIP</strong></a><button class="sidebar-close" type="button" aria-label="Close menu" data-menu-close>&times;</button></div>
+    <div class="sidebar-head"><a class="brand" href="{% url 'dashboard' %}" aria-label="Hair Ship home"><img class="brand-mark" src="{% static 'img/hairship-logo.png' %}" alt=""><strong>HAIR SHIP</strong></a><button class="sidebar-close" type="button" aria-label="Close menu" data-menu-close>{% include 'includes/nav_icon.html' with icon='close' only %}</button></div>
     <nav>
-      <a href="{% url 'dashboard' %}">&#8962; <span>Overview</span></a>
+      <a href="{% url 'dashboard' %}">{% include 'includes/nav_icon.html' with icon='home' only %}<span>Overview</span></a>
       {% if user.is_superuser or user.profile.role == 'ADMIN' %}
         <p>Administration</p>
-        <a href="{% url 'admin_visits' %}">&#128203; <span>Visits</span></a>
-        <a href="{% url 'admin_reports' %}">&#128202; <span>Reports</span></a>
-        <a href="{% url 'service_catalog' %}">&#9776; <span>Service catalogue</span></a>
-        <a href="{% url 'create_user' %}">+ <span>Add team member</span></a>
-        <a href="{% url 'branch_roster' %}">&#128197; <span>Branch roster</span></a>
-        <a href="{% url 'csv_import' %}">&#8679; <span>Import data</span></a>
-        <a href="/admin/">&#9881; <span>Manage records</span></a>
+        <a href="{% url 'admin_visits' %}">{% include 'includes/nav_icon.html' with icon='visits' only %}<span>Visits</span></a>
+        <a href="{% url 'admin_reports' %}">{% include 'includes/nav_icon.html' with icon='reports' only %}<span>Reports</span></a>
+        <a href="{% url 'service_catalog' %}">{% include 'includes/nav_icon.html' with icon='catalogue' only %}<span>Service catalogue</span></a>
+        <a href="{% url 'create_user' %}">{% include 'includes/nav_icon.html' with icon='user-add' only %}<span>Add team member</span></a>
+        <a href="{% url 'branch_roster' %}">{% include 'includes/nav_icon.html' with icon='calendar' only %}<span>Branch roster</span></a>
+        <a href="{% url 'csv_import' %}">{% include 'includes/nav_icon.html' with icon='upload' only %}<span>Import data</span></a>
+        {% if can_manage_records %}<a href="/admin/">{% include 'includes/nav_icon.html' with icon='settings' only %}<span>Manage records</span></a>{% endif %}
       {% elif user.profile.role == 'GENERAL_MANAGER' %}
         <p>General management</p>
-        <a href="{% url 'branch_roster' %}">&#128197; <span>Branch roster</span></a>
-        <a href="{% url 'admin_visits' %}">&#128203; <span>All visits</span></a>
-        <a href="{% url 'admin_reports' %}">&#128202; <span>Reports</span></a>
-        <a href="{% url 'service_catalog' %}">&#9776; <span>Service catalogue</span></a>
+        <a href="{% url 'branch_roster' %}">{% include 'includes/nav_icon.html' with icon='calendar' only %}<span>Branch roster</span></a>
+        <a href="{% url 'admin_visits' %}">{% include 'includes/nav_icon.html' with icon='visits' only %}<span>All visits</span></a>
+        <a href="{% url 'admin_reports' %}">{% include 'includes/nav_icon.html' with icon='reports' only %}<span>Reports</span></a>
+        <a href="{% url 'service_catalog' %}">{% include 'includes/nav_icon.html' with icon='catalogue' only %}<span>Service catalogue</span></a>
         <p>Acting branch manager</p>
         {% if acting_branch %}
-          <a href="{% url 'manager_dashboard' %}">&#8962; <span>Live operations · {{ acting_branch.name }}</span></a>
-          <a href="{% url 'new_visit' %}">+ <span>New service order</span></a>
+          <a href="{% url 'manager_dashboard' %}">{% include 'includes/nav_icon.html' with icon='activity' only %}<span>Live operations · {{ acting_branch.name }}</span></a>
+          <a href="{% url 'new_visit' %}">{% include 'includes/nav_icon.html' with icon='new' only %}<span>New service order</span></a>
+          <a href="{% url 'manager_staff' %}">{% include 'includes/nav_icon.html' with icon='staff' only %}<span>All staff</span></a>
         {% else %}
           <span class="sidebar-note">No branch assigned today</span>
         {% endif %}
       {% else %}
         <p>Operations</p>
-        <a href="{% url 'new_visit' %}">+ <span>New service order</span></a>
-        <a href="{% url 'service_catalog' %}">&#9776; <span>Service catalogue</span></a>
+        <a href="{% url 'new_visit' %}">{% include 'includes/nav_icon.html' with icon='new' only %}<span>New service order</span></a>
+        <a href="{% url 'service_catalog' %}">{% include 'includes/nav_icon.html' with icon='catalogue' only %}<span>Service catalogue</span></a>
+        <a href="{% url 'manager_staff' %}">{% include 'includes/nav_icon.html' with icon='staff' only %}<span>All staff</span></a>
       {% endif %}
     </nav>
-    <div class="sidebar-user"><small>Signed in as</small><strong>{{ user.first_name|default:user.username }}</strong><a href="{% url 'logout' %}">Sign out</a></div>
   </aside>
   <button class="sidebar-backdrop" type="button" aria-label="Close menu" data-menu-close></button>
-  <div class="workspace"><header class="desktop-session-bar"><span>Signed in as <strong>{{ user.first_name|default:user.username }}</strong></span><a class="button outline" href="{% url 'logout' %}">Sign out</a></header><header class="mobile-appbar"><button type="button" class="menu-toggle" aria-label="Open menu" aria-controls="app-sidebar" aria-expanded="false" data-menu-open>&#9776;</button><a class="brand" href="{% url 'dashboard' %}" aria-label="Hair Ship home"><img class="brand-mark" src="{% static 'img/hairship-logo.png' %}" alt=""><strong>HAIR SHIP</strong></a><b>{{ user.first_name|default:user.username }}</b><a class="mobile-signout" href="{% url 'logout' %}">Sign out</a></header>
+  <div class="workspace">
+    <header class="desktop-session-bar">{% include 'includes/profile_menu.html' %}</header>
+    <header class="mobile-appbar"><button type="button" class="menu-toggle" aria-label="Open menu" aria-controls="app-sidebar" aria-expanded="false" data-menu-open>{% include 'includes/nav_icon.html' with icon='menu' only %}</button><a class="brand" href="{% url 'dashboard' %}" aria-label="Hair Ship home"><img class="brand-mark" src="{% static 'img/hairship-logo.png' %}" alt=""><strong>HAIR SHIP</strong></a>{% include 'includes/profile_menu.html' %}</header>
 {% else %}
-<header class="topbar"><a class="brand" href="{% url 'dashboard' %}" aria-label="Hair Ship home"><img class="brand-mark" src="{% static 'img/hairship-logo.png' %}" alt=""><strong>HAIR SHIP</strong></a>{% if user.is_authenticated %}<div><b>{{ user.first_name|default:user.username }}</b><a href="{% url 'logout' %}">Sign out</a></div>{% endif %}</header><div class="workspace plain">
+<header class="topbar"><a class="brand" href="{% url 'dashboard' %}" aria-label="Hair Ship home"><img class="brand-mark" src="{% static 'img/hairship-logo.png' %}" alt=""><strong>HAIR SHIP</strong></a>{% if user.is_authenticated %}{% include 'includes/profile_menu.html' %}{% endif %}</header><div class="workspace plain">
 {% endif %}
   <main class="content">{% for message in messages %}<div class="notice {{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</main>
 </div>

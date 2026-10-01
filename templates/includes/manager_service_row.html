@@ -1,0 +1,6 @@
+<div class="manager-service-row{% if s.status == 'CANCELLED' %} manager-service-cancelled{% endif %}">
+  <span class="order-badge" aria-label="Service order {{ s.order_number }}">{{ s.order_number }}</span>
+  <div class="manager-service-main"><strong>{{ s.service.name }}</strong><span>{{ s.employee.get_full_name|default:s.employee.username }} · {{ s.chair.name|default:'No chair' }}</span>{% if s.cancellation_reason %}<small>Cancelled: {{ s.cancellation_reason }}</small>{% endif %}</div>
+  <div class="manager-service-state"><span class="status {{ s.status|lower }}">{% if s.status == 'EMPLOYEE_DONE' %}Submitted{% else %}{{ s.get_status_display }}{% endif %}</span>{% if s.status == 'ASSIGNED' or s.status == 'IN_PROGRESS' or s.status == 'PAUSED' %}<span class="manager-service-progress" aria-label="{{ s.progress_percent }} percent complete">{{ s.progress_percent }}%</span>{% endif %}</div>
+  {% if s.execution_locked and s.status == 'ASSIGNED' or s.status == 'IN_PROGRESS' or s.status == 'PAUSED' %}<a class="button outline manager-reassign" href="{% url 'cancel_and_reassign_service' s.id %}" aria-label="Cancel and reassign {{ s.service.name }} for {{ s.visit.customer.name }}">Cancel &amp; reassign</a>{% endif %}
+</div>

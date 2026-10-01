@@ -1,0 +1,20 @@
+<div class="assignment-row {% if form.execution_locked %}locked{% endif %}">
+  {{ form.id }}
+  {% if form.non_field_errors %}<div class="assignment-row-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="assignment-field assignment-order"><label for="{{ form.order_number.id_for_label }}">Order</label>{{ form.order_number }}{{ form.order_number.errors }}</div>
+  <div class="assignment-field assignment-service">
+    <label id="{{ form.prefix }}-service-label" for="{{ form.service.id_for_label }}">Service</label>
+    <div class="service-combobox" data-selected-label="{% if form.instance.service_id %}{{ form.instance.service }}{% endif %}">
+      <input type="text" id="{{ form.prefix }}-service-search" class="form-control service-combobox-input" value="{% if form.instance.service_id %}{{ form.instance.service }}{% endif %}" placeholder="Search name or code" autocomplete="off" role="combobox" aria-labelledby="{{ form.prefix }}-service-label" aria-controls="{{ form.prefix }}-service-options" aria-expanded="false" aria-autocomplete="list"{% if form.service.errors %} aria-invalid="true"{% endif %}>
+      <div class="service-combobox-menu" id="{{ form.prefix }}-service-options" role="listbox" aria-labelledby="{{ form.prefix }}-service-label"></div>{{ form.service }}
+    </div>{{ form.service.errors }}
+  </div>
+  <div class="assignment-field assignment-staff"><label for="{{ form.employee.id_for_label }}">Staff</label>{{ form.employee }}{{ form.employee.errors }}</div>
+  <div class="assignment-field assignment-chair"><label for="{{ form.chair.id_for_label }}">Chair <span class="field-optional">Optional</span></label>{{ form.chair }}{{ form.chair.errors }}</div>
+  <div class="assignment-action">
+    {% if form.execution_locked %}
+      <span class="status {{ form.instance.status|lower }}">{{ form.instance.get_status_display }}</span><small class="assignment-lock-note">Started work is locked.</small>
+      {% if form.instance.status == 'ASSIGNED' or form.instance.status == 'IN_PROGRESS' or form.instance.status == 'PAUSED' %}<a class="button outline" href="{% url 'cancel_and_reassign_service' form.instance.pk %}">Cancel &amp; reassign</a>{% endif %}
+    {% else %}<label class="delete-label">{{ form.DELETE }} <span>Remove service</span></label>{% endif %}
+  </div>
+</div>

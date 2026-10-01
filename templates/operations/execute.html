@@ -2,6 +2,10 @@
 {% block title %}{{ vs.visit.customer.name }} · Hairship{% endblock %}
 {% block content %}
 <div class="employee-work">
+  <nav class="service-back-nav" aria-label="Service navigation">
+    <a class="button outline" href="{% url 'employee_dashboard' %}">← Back to my services</a>
+    <span class="muted">Switch between your assigned visits.</span>
+  </nav>
   <header class="task-head">
     <div><span class="eyebrow">Current service</span><h1>{{ vs.visit.customer.name }}</h1><p class="muted">{{ vs.service.name }} · {{ vs.chair|default:'No chair' }}</p></div>
     <div class="service-progress"><b>{{ vs.progress_percent }}%</b><span>complete</span></div>
@@ -10,7 +14,7 @@
 
   {% if opening_tasks %}
   <section class="panel visit-opening">
-    <header><div><span class="eyebrow">Once per visit</span><h2>Visit opening checks</h2><p>Confirm each check without starting a timer.</p></div></header>
+    <header><div><span class="eyebrow">Once per visit</span><h2>Visit opening checks</h2><p>Confirm sanitisation, then consultation.</p></div></header>
     <div class="opening-check-list">
       {% for task in opening_tasks %}
       <article class="opening-check {% if task.status == 'COMPLETED' %}confirmed{% endif %}">
@@ -32,7 +36,6 @@
     <article class="task-item {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}task-finished{% elif task.status == 'IN_PROGRESS' %}task-active{% endif %}">
       <header><div><h2><span class="task-number">{{ forloop.counter }}</span>{{ task.title }}</h2></div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></header>
       {% if task.staff_instructions %}<p class="muted">{{ task.staff_instructions }}</p>{% endif %}
-      {% if task.supports_waiting and task.started_at %}<p class="muted">Hands-on: <span data-elapsed="{{ task.labour_seconds }}" {% if task.status == 'IN_PROGRESS' %}data-running="true"{% endif %}></span> · Waiting: <span data-elapsed="{{ task.waiting_seconds }}" {% if task.status == 'WAITING' %}data-running="true"{% endif %}></span></p>{% endif %}
       {% if task.status == 'COMPLETED' or task.status == 'SKIPPED' %}
       <div class="finished-note">{% if task.status == 'COMPLETED' %}✓ Completed{% else %}Skipped{% if task.skip_reason %}: {{ task.skip_reason }}{% endif %}{% endif %}</div>
       {% else %}
@@ -69,6 +72,5 @@
 
   {% if not current %}<section class="panel finish-service"><h2>All tasks finished</h2><p class="muted">Send the completed service to your manager for verification.</p><form method="post" action="{% url 'finish_service' vs.id %}" class="form-grid">{% csrf_token %}<textarea name="employee_notes" class="form-control" rows="2" placeholder="Optional final note"></textarea><button class="button success large">Submit to manager</button></form></section>{% endif %}
 </div>
-<script>(function(){var began=Date.now();function tick(){document.querySelectorAll('[data-elapsed]').forEach(function(el){var s=Number(el.dataset.elapsed)+(el.dataset.running?Math.floor((Date.now()-began)/1000):0);el.textContent=Math.floor(s/60)+'m '+(s%60)+'s';});}tick();setInterval(tick,1000);})();</script>
 <script>document.addEventListener('click',function(e){let open=e.target.dataset.skipToggle,cancel=e.target.dataset.skipCancel;if(open)document.getElementById(open).hidden=false;if(cancel)document.getElementById(cancel).hidden=true});document.querySelectorAll('.skip-reason').forEach(function(select){select.addEventListener('change',function(){let other=this.closest('.skip-panel').querySelector('.other-reason');other.hidden=this.value!=='OTHER';other.required=this.value==='OTHER';if(!other.required)other.value=''})});</script>
 {% endblock %}

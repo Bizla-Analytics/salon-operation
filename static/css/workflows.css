@@ -1,0 +1,81 @@
+/* Manager create, assignment and review pages. Keep all changes scoped. */
+.workflow-page{min-width:0}
+.workflow-page .page-head{gap:16px;margin-bottom:18px}
+.workflow-page .page-head>div{min-width:0}
+.workflow-page .page-head h1{font-size:clamp(1.65rem,2.5vw,2rem);line-height:1.25;overflow-wrap:anywhere}
+.workflow-page .eyebrow{font-size:.65rem;margin-bottom:4px}
+.workflow-page .page-head p{font-size:.83rem;line-height:1.5;margin-top:6px}
+.workflow-page .button{font-size:.83rem;min-height:44px;padding:10px 14px}
+.workflow-page .workflow-back{flex:0 0 auto;min-height:36px;padding:8px 11px;white-space:nowrap}
+.workflow-page .panel{padding:20px;border-radius:12px;min-width:0}
+.workflow-create-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}
+.workflow-section-head{margin-bottom:18px}
+.workflow-section-head h2,.workflow-guide h2{font-size:1.15rem;margin:0;line-height:1.4}
+.workflow-section-head p{margin:5px 0 0;font-size:.8rem;line-height:1.5;color:var(--muted)}
+.workflow-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 16px}
+.workflow-field{min-width:0}
+.workflow-page label{display:block;font-size:.8rem;font-weight:700;margin-bottom:7px;line-height:1.4}
+.field-required,.field-optional{font-size:.68rem;font-weight:500;color:var(--muted);margin-left:4px}
+.workflow-page .form-control,.workflow-page .assignment-field input,.workflow-page .assignment-field select{min-width:0;min-height:44px;width:100%;border-color:var(--line);background:var(--card);color:var(--ink);padding:10px 11px;font-size:.9rem}
+.workflow-page textarea{resize:vertical;line-height:1.5}
+.workflow-field .helptext{display:block;line-height:1.5;margin-top:6px;font-size:.74rem}
+.workflow-page .errorlist{font-size:.8rem;line-height:1.5;margin:7px 0;padding-left:18px;overflow-wrap:anywhere}
+.workflow-field.has-errors .form-control{border-color:var(--danger)}
+.workflow-invoice-field{grid-column:1/-1;border-top:1px solid var(--line);padding-top:16px}
+.workflow-guide ol{list-style:none;padding:0;margin:18px 0;counter-reset:workflow-step;display:grid;gap:16px}
+.workflow-guide li{position:relative;counter-increment:workflow-step;padding-left:34px;display:grid;gap:4px;font-size:.8rem;line-height:1.5}
+.workflow-guide li:before{content:counter(workflow-step);position:absolute;left:0;top:1px;display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:var(--bg);color:var(--brand);font-weight:800}
+.workflow-guide li span,.workflow-guide>p{color:var(--muted);font-size:.77rem;line-height:1.55}
+.workflow-guide>p{margin:0;border-top:1px solid var(--line);padding-top:14px}
+.workflow-submit{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding-top:16px;margin-top:20px}
+.workflow-submit p{margin:0!important;min-width:0;color:var(--muted);font-size:.77rem;line-height:1.5}
+.workflow-submit .button{flex:0 0 auto}
+.workflow-submit-bar{position:sticky;bottom:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:10;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px 16px;margin-top:0}
+.workflow-customer-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;margin-bottom:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow-wrap:anywhere}
+.workflow-customer-summary>div{min-width:0;display:grid;gap:4px}
+.workflow-customer-summary strong{font-size:.98rem}
+.workflow-customer-summary>div>span{font-size:.76rem;color:var(--muted);line-height:1.5}
+.workflow-page .status{font-size:.62rem;line-height:1.4;letter-spacing:.025em;flex:0 0 auto;text-align:center}
+.workflow-page .visit-builder,.workflow-page .visit-verification{gap:16px}
+.workflow-page .assignment-list{overflow:visible}
+.workflow-page .assignment-row{grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,.9fr) 132px;gap:14px;padding:16px 0;align-items:start}
+.assignment-field{min-width:0}
+.workflow-page .assignment-row-errors{grid-column:1/-1}
+.workflow-page .assignment-action{padding-top:25px;min-width:0;gap:7px}
+.workflow-page .delete-label{display:flex;align-items:center;gap:7px;min-height:44px;margin:0;color:var(--danger);font-size:.76rem;cursor:pointer}
+.workflow-page .delete-label input{width:18px;height:18px;margin:0;accent-color:var(--danger)}
+.assignment-lock-note{color:var(--muted);font-size:.7rem;line-height:1.4}
+.workflow-page .assignment-action .button{font-size:.73rem;padding:8px;white-space:normal}
+.workflow-page .assignment-row.locked{background:var(--bg);border-radius:10px;padding:16px 10px}
+.workflow-page .assignment-row[data-removed="true"] .assignment-field{opacity:.5}
+.workflow-page .assignment-row[data-removed="true"]{background:var(--bg)}
+.workflow-page #add-assignment{margin-top:8px}
+.workflow-page .service-combobox-menu{max-height:240px;overscroll-behavior:contain}
+.workflow-page .combobox-option{font-size:.85rem;min-height:44px;overflow-wrap:anywhere;line-height:1.4}
+.workflow-timings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.workflow-timings>div{min-width:0;padding-left:14px;border-left:1px solid var(--line)}
+.workflow-timings>div:first-child{padding-left:0;border-left:0}
+.workflow-timings dt{color:var(--muted);font-size:.72rem;line-height:1.5}
+.workflow-timings dd{font-size:1.1rem;font-weight:800;margin:4px 0 0;font-variant-numeric:tabular-nums}
+.workflow-page .verification-service>header{align-items:flex-start;gap:10px;padding-bottom:14px;flex-wrap:wrap}
+.workflow-page .verification-service>header>div{min-width:140px;flex:1}
+.workflow-page .verification-service>header>.status{margin-left:auto}
+.workflow-page .verification-service h2{font-size:1.15rem;line-height:1.4;overflow-wrap:anywhere}
+.workflow-page .verification-service>header p{font-size:.77rem;line-height:1.5;margin:4px 0 0;overflow-wrap:anywhere}
+.workflow-page .order-badge{width:28px;height:28px;flex-basis:28px;border-radius:8px;font-size:.8rem}
+.verification-service .workflow-timings{background:var(--bg);border:0;padding:12px;margin:14px 0}
+.verification-service .workflow-timings dd{font-size:.95rem}
+.workflow-checklist>summary{cursor:pointer;font-weight:700;font-size:.84rem;padding:12px 0;display:list-item}
+.workflow-checklist>summary>span{font-size:.73rem;font-weight:500;color:var(--muted);margin-left:8px}
+.workflow-checklist>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.workflow-page .verify-list li{padding:11px 0;align-items:flex-start;gap:12px}
+.workflow-task-main{display:grid;gap:5px;min-width:0;overflow-wrap:anywhere}
+.workflow-task-main strong{font-size:.82rem;font-weight:600;line-height:1.5}
+.workflow-task-main small{font-size:.74rem;color:var(--muted);line-height:1.5;white-space:pre-wrap}
+.workflow-page .note-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.workflow-page .note-grid>div{min-width:0;background:var(--bg);padding:14px}
+.workflow-staff-note h3{font-size:.95rem;margin:0}
+.workflow-staff-note p{font-size:.82rem;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0!important}
+@media(max-width:1199px){.workflow-create-grid{grid-template-columns:minmax(0,1fr)}.workflow-page .assignment-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.workflow-page .assignment-order input{max-width:80px}.workflow-page .assignment-action{grid-column:1/-1;padding-top:0;display:flex;align-items:center;flex-wrap:wrap}.workflow-page .assignment-action .button{margin-left:auto}.workflow-page .assignment-action .status{max-width:100%}}
+@media(max-width:650px){.workflow-page .page-head.split{flex-direction:row;align-items:flex-start;flex-wrap:wrap}.workflow-page .page-head.split .button{width:auto}.workflow-page .panel{padding:16px}.workflow-fields{grid-template-columns:minmax(0,1fr);gap:16px}.workflow-submit{align-items:stretch;flex-direction:column;gap:10px}.workflow-submit .button{width:100%}.workflow-submit-bar{padding:12px}.workflow-guide{display:none}.workflow-page .form-control,.workflow-page .assignment-field input,.workflow-page .assignment-field select{font-size:16px;min-height:46px}.workflow-page .assignment-row{grid-template-columns:64px minmax(0,1fr);gap:12px}.workflow-page .assignment-staff,.workflow-page .assignment-chair{grid-column:1/-1}.workflow-page .assignment-row.locked{padding:14px 10px}.workflow-page .note-grid{grid-template-columns:minmax(0,1fr);gap:12px}.workflow-timings{padding:12px;gap:8px}.workflow-timings>div{padding-left:8px}.workflow-timings dt{font-size:.65rem}.workflow-timings dd{font-size:.98rem}.workflow-page .verify-list li>.status{max-width:105px}.workflow-customer-summary{padding:12px;align-items:flex-start}.workflow-customer-summary>.status{max-width:115px}}
+@media(prefers-reduced-motion:reduce){.workflow-page *{scroll-behavior:auto}}

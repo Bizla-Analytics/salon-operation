@@ -64,3 +64,10 @@ input:disabled,select:disabled,textarea:disabled{background:#edf1ef!important;co
 .desktop-session-bar .button{border-color:#b8c9c4}
 @media(max-width:900px){.desktop-session-bar{display:none}}
 .sidebar-note{padding:8px 12px;color:#c7dad5;font-size:.83rem}
+.service-back-nav{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:24px}.service-back-nav>span{font-size:.85rem}.job-service-name{display:block;font-size:1.05rem}.job-open{margin-top:18px}.job-locked{background:#f5f7f6}.job-card .continue.muted{color:var(--muted)}
+
+/* Feedback: familiar faces and equal-size actions in one row on every screen. */
+.feedback-page .emoji{font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif;font-size:1.75rem;line-height:1.2}
+.feedback-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:stretch}
+.feedback-actions .button{width:100%;height:100%;min-width:0;min-height:52px;margin:0;padding:10px 8px;font-size:.85rem;line-height:1.35;text-align:center;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:650px){.feedback-actions .button{min-height:68px;font-size:.78rem}}

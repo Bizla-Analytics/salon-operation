@@ -184,7 +184,7 @@ class CombinedServiceWorkflowTests(TestCase):
 
         page = self.client.get(reverse("execute_service", args=[first.pk]))
         self.assertContains(page, "Visit opening checks")
-        self.assertContains(page, "Confirm each check without starting a timer.")
+        self.assertContains(page, "Confirm sanitisation, then consultation.")
         self.assertContains(page, reverse("task_action", args=[sanitisation.pk, "confirm"]))
         self.assertNotContains(page, reverse("task_action", args=[sanitisation.pk, "start"]))
 
@@ -353,8 +353,8 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertContains(response, f"Visit #{visit.pk}")
         self.assertContains(response, self.service_a.name)
         self.assertContains(response, "Apply filters")
-        self.assertContains(response, "Actual working time")
-        self.assertContains(response, "0 minutes")
+        self.assertContains(response, "Total task time")
+        self.assertContains(response, "1 hour 40 minutes")
         self.assertNotContains(response, "<small>Token</small>", html=True)
         self.assertNotContains(response, "<small>Invoice</small>", html=True)
 
@@ -560,6 +560,37 @@ class CombinedServiceWorkflowTests(TestCase):
         self.assertFalse(feedback.answers.exists())
         dashboard = self.client.get(reverse("manager_dashboard"))
         self.assertFalse(dashboard.context["visits"].filter(pk=visit.pk).exists())
+
+    def test_feedback_uses_standard_faces_and_equal_row_action_class(self):
+        visit, _, _ = self.create_visit()
+        visit.status = 'INVOICED'
+        visit.save()
+        self.client.force_login(self.manager)
+        page = self.client.get(reverse('collect_feedback', args=[visit.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'class="feedback-actions"', count=1)
+        self.assertNotContains(page, 'class="verification-actions"')
+        self.assertContains(page, 'Back to overview')
+        self.assertContains(page, 'Close without feedback')
+        self.assertContains(page, 'Complete feedback')
+        self.assertContains(page, 'formnovalidate')
+        count = FeedbackQuestion.objects.filter(active=True).count()
+        for face in ['😞', '🙁', '😐', '🙂', '😀']:
+            self.assertContains(page, face, count=count)
+        for face in ['😣', '🤩']:
+            self.assertNotContains(page, face)
+
+    def test_public_feedback_keeps_single_submit_button_and_same_rating_values(self):
+        visit, _, _ = self.create_visit()
+        feedback = Feedback.objects.create(visit=visit)
+        page = self.client.get(reverse('feedback_form', args=[feedback.public_token]))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'Submit feedback')
+        self.assertNotContains(page, 'class="feedback-actions"')
+        self.assertNotContains(page, 'Close without feedback')
+        for question in FeedbackQuestion.objects.filter(active=True):
+            for rating in range(1, 6):
+                self.assertContains(page, f'name="q_{question.pk}" value="{rating}" required')
 
     def test_default_feedback_questions_are_bilingual(self):
         questions = list(FeedbackQuestion.objects.filter(active=True).order_by("sequence"))

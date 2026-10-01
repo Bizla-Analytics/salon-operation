@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Visit #{{ visit.pk }} · Hairship{% endblock %}
+{% block content %}
+<header class="page-head split"><div><span class="eyebrow">{{ visit.branch.name }} · Visit #{{ visit.pk }}</span><h1>{{ visit.customer.name }}</h1><p>{{ visit.get_status_display }} · {{ visit.customer.mobile|default:'No contact number' }}</p></div><a class="button outline" href="{% url 'dashboard' %}">Back to overview</a></header>
+<section class="panel"><h2>Measured task time</h2><p>Total task time: <strong>{{ visit.total_task_time }}</strong> · Working time: <strong>{{ visit.working_time }}</strong> · Waiting time: <strong>{{ visit.waiting_time }}</strong></p><p class="muted">Total task time is the sum of hands-on and waiting intervals, excluding cancelled assignments and untimed opening checks. Legacy tasks without separate intervals are counted as working time.</p>{% if visit.invoice %}<p>Invoice {{ visit.invoice.invoice_number }} · {{ visit.invoice.get_status_display }} · ₹{{ visit.invoice.amount }}</p>{% endif %}{% if visit.feedback %}<p>Feedback: {% if visit.feedback.submitted_at %}Submitted{% else %}Not submitted{% endif %}</p>{% endif %}</section>
+{% for service in services %}
+<section class="panel verification-service" style="margin-top:18px"><header><span class="order-badge">{{ service.order_number }}</span><div><h2>{{ service.service.name }}</h2><p class="muted">{{ service.employee.get_full_name|default:service.employee.username }} · {{ service.chair|default:'No chair' }}</p></div><span class="status {{ service.status|lower }}">{{ service.get_status_display }}</span></header>
+<p>Total task time: {{ service.total_task_time }} · Working time: {{ service.working_time }} · Waiting time: {{ service.waiting_time }}</p>
+{% if service.cancellation_reason %}<p>Cancelled: {{ service.cancellation_reason }}</p>{% endif %}
+<ul class="verify-list">{% for task in service.tasks.all %}<li><span>{{ task.title }}{% if task.skip_reason %}<small class="muted">Skip reason: {{ task.skip_reason }}</small>{% endif %}</span><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></li>{% endfor %}</ul>
+<p>Staff note: {{ service.employee_notes|default:'No note supplied.' }}</p><p>Manager note: {{ service.manager_notes|default:'No note supplied.' }}</p>
+</section>{% endfor %}
+{% endblock %}

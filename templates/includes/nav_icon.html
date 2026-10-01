@@ -1,0 +1,16 @@
+<svg class="nav-icon" data-icon="{{ icon }}" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{% if icon == 'home' %}<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>
+{% elif icon == 'visits' %}<rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 11h6M9 15h6M9 19h4"/>
+{% elif icon == 'reports' %}<path d="M4 3v17h17M8 16v-5M13 16V7M18 16V4"/>
+{% elif icon == 'catalogue' %}<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8h.01M12 8h5M8 12h.01M12 12h5M8 16h.01M12 16h5"/>
+{% elif icon == 'user-add' %}<circle cx="8" cy="7" r="4"/><path d="M2 21v-2a6 6 0 0 1 12 0v2M19 8v6M16 11h6"/>
+{% elif icon == 'calendar' %}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 11h18M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h.01"/>
+{% elif icon == 'upload' %}<path d="M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5M12 16V3m-5 5 5-5 5 5"/>
+{% elif icon == 'settings' %}<path d="M3 6h4m4 0h10M3 12h10m4 0h4M3 18h4m4 0h10"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/>
+{% elif icon == 'activity' %}<path d="M2 12h5l3-8 4 16 3-8h5"/>
+{% elif icon == 'new' %}<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/>
+{% elif icon == 'staff' %}<circle cx="8" cy="8" r="3"/><path d="M2 21v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M17 15a5 5 0 0 1 5 5v1"/>
+{% elif icon == 'menu' %}<path d="M4 6h16M4 12h16M4 18h16"/>
+{% elif icon == 'close' %}<path d="m6 6 12 12M18 6 6 18"/>
+{% endif %}
+</svg>

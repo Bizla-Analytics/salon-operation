@@ -1,0 +1,6 @@
+<div class="workflow-field{% if field.errors %} has-errors{% endif %}">
+  <label for="{{ field.id_for_label }}">{{ field.label }} {% if field.field.required %}<span class="field-required">Required</span>{% elif not field.field.disabled %}<span class="field-optional">Optional</span>{% endif %}</label>
+  {{ field }}
+  {% if field.help_text %}<small class="helptext" id="{{ field.id_for_label }}_helptext">{{ field.help_text }}</small>{% endif %}
+  {{ field.errors }}
+</div>

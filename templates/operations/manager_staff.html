@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}All staff · Hairship{% endblock %}
+{% block content %}
+<header class="page-head staff-page-head"><span class="eyebrow">{{ branch.name|default:'Branch operations' }}</span><h1>All staff</h1><p>Your branch team and staff covering here today · {{ today|date:'d M Y' }}.</p></header>
+<div class="staff-grid">
+  {% for person in staff %}
+  <article class="panel staff-card">
+    <header class="staff-card-head"><h2>{{ person.get_full_name|default:person.username }}</h2><span class="status">{{ person.duty_label }}</span></header>
+    <p class="muted">{{ person.profile.job_title|default:'Employee' }}{% if person.profile.employee_code %} · {{ person.profile.employee_code }}{% endif %}</p>
+    <dl class="profile-facts">
+      <div><dt>Username</dt><dd>{{ person.username }}</dd></div>
+      <div><dt>Email</dt><dd>{{ person.email|default:'Not provided' }}</dd></div>
+      <div><dt>Mobile</dt><dd>{{ person.profile.mobile|default:'Not provided' }}</dd></div>
+      <div><dt>Open services here</dt><dd>{{ person.open_services }}</dd></div>
+    </dl>
+  </article>
+  {% empty %}<div class="empty-state"><b>No staff found</b><span>No employees are assigned to this branch.</span></div>{% endfor %}
+</div>
+{% endblock %}

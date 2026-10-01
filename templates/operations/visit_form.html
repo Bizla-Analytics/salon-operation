@@ -1,14 +1,29 @@
 {% extends 'base.html' %}
 {% block title %}New service visit · Hairship{% endblock %}
 {% block content %}
+<div class="workflow-page">
 <header class="page-head split">
-  <div><span class="eyebrow">Manager</span><h1>{{ title }}</h1><p>Save the customer first, then add each service with its own staff member and chair.</p></div>
-  <a href="{% url 'manager_dashboard' %}" class="button outline">Back</a>
+  <div><span class="eyebrow">Step 1 of 2 · New visit</span><h1>{{ title }}</h1><p>Start with the customer. Assign services and staff next.</p></div>
+  <a href="{% url 'manager_dashboard' %}" class="button outline workflow-back">Back to visits</a>
 </header>
-<div class="panel narrow">
-  <form method="post" class="form-grid">
-    {% csrf_token %}{{ form.non_field_errors }}{{ form.as_p }}
-    <button class="button primary large">Continue to service assignments</button>
-  </form>
+<div class="workflow-create-grid">
+  <section class="panel workflow-panel">
+    <header class="workflow-section-head"><h2>Customer details</h2><p>Only the customer name is required.</p></header>
+    <form method="post" class="form-grid workflow-form">
+      {% csrf_token %}{{ form.non_field_errors }}
+      <div class="workflow-fields">
+        {% include 'includes/workflow_field.html' with field=form.customer_name %}
+        {% include 'includes/workflow_field.html' with field=form.mobile %}
+        <div class="workflow-invoice-field">{% include 'includes/workflow_field.html' with field=form.invoice_number %}</div>
+      </div>
+      <div class="workflow-submit"><p>Next: choose services, execution order, staff and chairs.</p><button type="submit" class="button primary">Continue to assignments</button></div>
+    </form>
+  </section>
+  <aside class="panel workflow-guide" aria-label="Visit workflow">
+    <h2>One customer, one visit</h2>
+    <ol><li><b>Save customer details</b><span>Create the visit with a name and optional mobile number.</span></li><li><b>Assign ordered services</b><span>Choose a staff member and optional chair for each service.</span></li><li><b>Review, invoice &amp; feedback</b><span>Verify submitted work, then create one invoice and collect feedback.</span></li></ol>
+    <p>Sanitisation and consultation happen once at the beginning of the visit.</p>
+  </aside>
+</div>
 </div>
 {% endblock %}

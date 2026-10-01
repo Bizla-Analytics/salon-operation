@@ -1,0 +1,8 @@
+<details class="workflow-checklist" open>
+  <summary>Task checklist <span>{{ tasks|length }} task{{ tasks|length|pluralize }}</span></summary>
+  <ul class="verify-list">
+    {% for task in tasks %}
+    <li><div class="workflow-task-main"><strong>{{ task.title }}</strong>{% if task.skip_reason %}<small>Skipped: {{ task.skip_reason }}</small>{% endif %}{% if task.note %}<small>Staff note: {{ task.note }}</small>{% endif %}{% if task.timing_segments.exists %}<small>Working: {{ task.labour_seconds }}s · Waiting: {{ task.waiting_seconds }}s</small>{% endif %}</div><span class="status {{ task.status|lower }}">{{ task.get_status_display }}</span></li>
+    {% empty %}<li class="muted">No tasks recorded.</li>{% endfor %}
+  </ul>
+</details>
