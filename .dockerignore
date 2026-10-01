@@ -1,6 +1,12 @@
 .git
 .gitignore
 .env
+.env.*
+*.restic.env
+*.secrets
+*.env
+*.dump
+*.backup
 .venv
 venv
 __pycache__

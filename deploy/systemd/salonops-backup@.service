@@ -1,0 +1,12 @@
+[Unit]
+Description=Encrypted off-server SalonOps backup (%i)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=salonops-deploy
+EnvironmentFile=/etc/salonops/%i.ops.env
+ExecStart=/usr/bin/bash /opt/salonops-%i/scripts/backup.sh ${SALONOPS_ENV_FILE} ${SALONOPS_PROJECT} /opt/salonops-%i/compose.production.yaml ${SALONOPS_BACKUP_ROOT} ${SALONOPS_RESTIC_ENV_FILE}
+TimeoutStartSec=2h
+UMask=0077

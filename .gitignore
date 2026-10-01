@@ -37,6 +37,13 @@ backups/
 .local-backups/
 .deploy/
 *.sql.gz
+*.dump
+*.backup
+*.restic.env
+*.secrets
+*.env
+!deploy/*.env.example
+!.env.example
 exports/
 outputs/
 output/

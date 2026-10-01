@@ -15,21 +15,15 @@ A responsive Django application for salon operations with separate admin, manage
 - SOP task categories for consultation, service steps, towel/laundry, cleaning/sanitization, quality checks, and recommendations
 - Required, optional, and skippable tasks with skip reasons
 - Five-question emoji feedback form with optional suggestion
-- SQLite development database and PostgreSQL-ready dependency set
+- PostgreSQL-only database, Docker deployment and encrypted off-server backup tooling
 
 ## Quick start
 
 ```bash
-python -m venv .venv
-# Windows
-.venv\\Scripts\\activate
-# Linux/macOS
-source .venv/bin/activate
-
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py seed_demo
-python manage.py runserver
+cp .env.example .env
+# Set your local SECRET_KEY and PostgreSQL credentials in .env first.
+docker compose up --build -d
+docker compose exec -T web python manage.py createsuperuser
 ```
 
 Run `seed_demo` only when setting up development demo data. Do not run it during
@@ -38,7 +32,10 @@ accounts and demo SOP configuration.
 
 Open `http://127.0.0.1:8000/`.
 
-## Demo accounts
+## Optional development demo accounts
+
+On a disposable development database only, run
+`docker compose exec -T web python manage.py seed_demo` to create these accounts.
 
 All demo passwords are `Admin@123`.
 
@@ -98,24 +95,22 @@ Sample files are in `sample_csv/`. Imports use update-or-create behaviour, so ma
 
 The employee sees only their assigned jobs. Inside a job, the page shows one current SOP task and large action buttons. Notes are optional except when a configured skipped task requires a reason. The full checklist is collapsed by default.
 
-## Production notes
+## Production deployment
 
-- Set a secure `SECRET_KEY`, `DEBUG=False`, and explicit `ALLOWED_HOSTS`.
-- Keep `salon_db.sqlite3` outside Git-managed deployment files and back it up
-  before every deployment. The database is intentionally ignored by Git.
-- Replace SQLite with PostgreSQL for real multi-user deployment.
-- Serve with Gunicorn and Nginx, or deploy to a Django-capable host.
-- Add HTTPS before using customer or employee data.
-- Create separate production admin credentials and deactivate demo accounts.
+Follow [the deployment and recovery guide](docs/production-deployment.md) for
+`dev` / `prod` branches, GitHub Actions runners, dedicated Docker PostgreSQL,
+HTTPS via the company proxy or optional Caddy, encrypted off-server backups and
+isolated restore rehearsals. Automatic VPS deployment is disabled until enabled
+explicitly after company setup. Never use the local Compose file for production.
 
 ## Useful commands
 
 ```bash
-python manage.py check
-python manage.py makemigrations
-python manage.py migrate
-python manage.py createsuperuser
-    python manage.py collectstatic --noinput
+docker compose exec -T web python manage.py check
+docker compose exec -T web python manage.py makemigrations --check --dry-run
+docker compose exec -T web python manage.py test
+node --test tests/*.test.cjs
+```
 
 ## Docker and PostgreSQL
 
@@ -211,15 +206,17 @@ The account-menu JavaScript unit tests can also be run with
 ## Git workflow
 
 The canonical remote is `https://github.com/Bizla-Analytics/salon-operation.git`.
-Develop changes on a feature branch and review them before merging into `main`:
+Develop on a feature branch and review into `dev` for the test server. Promote
+tested changes from `dev` into `prod` for the company server:
 
 ```powershell
 git switch -c feature/short-description
-git add .
+# Stage reviewed source files explicitly; never stage data or credentials.
+git add path/to/changed-source
 git commit -m "Describe the change"
 git push -u origin feature/short-description
 ```
 
 Do not commit `.env`, workbooks, customer data, exports, backups, SQLite files,
-or database dumps.
-```
+or database dumps. Branches contain code only; test and production databases
+remain completely separate.

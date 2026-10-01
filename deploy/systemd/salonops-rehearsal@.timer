@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly SalonOps restore rehearsal (%i)
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+Unit=salonops-rehearsal@%i.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly SalonOps backup (%i)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+Unit=salonops-backup@%i.service
+
+[Install]
+WantedBy=timers.target

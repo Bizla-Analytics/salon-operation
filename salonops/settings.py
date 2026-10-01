@@ -1,27 +1,66 @@
 from pathlib import Path
 import os
+from django.core.exceptions import ImproperlyConfigured
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name, str(default)).strip().lower()
+    if value not in ('true', 'false', '1', '0'):
+        raise ImproperlyConfigured(f'{name} must be true or false.')
+    return value in ('true', '1')
+
+
+def required_env(name):
+    value = os.getenv(name, '')
+    if not value.strip():
+        raise ImproperlyConfigured(f'{name} is required. Configure PostgreSQL and secrets in .env; SQLite is not supported.')
+    return value
+
 BASE_DIR=Path(__file__).resolve().parent.parent
-SECRET_KEY=os.getenv('SECRET_KEY','dev-only-change-me')
-DEBUG=os.getenv('DEBUG','True').lower()=='true'
-ALLOWED_HOSTS=[x.strip() for x in os.getenv('ALLOWED_HOSTS','*').split(',') if x.strip()]
+DEBUG=env_bool('DEBUG', True)
+APP_ENV=os.getenv('APP_ENV', 'development').strip().lower()
+if APP_ENV == 'production' and DEBUG:
+    raise ImproperlyConfigured('Production requires DEBUG=False.')
+SECRET_KEY=required_env('SECRET_KEY')
+if not DEBUG and (len(SECRET_KEY) < 50 or len(set(SECRET_KEY)) < 5 or SECRET_KEY.startswith(('dev-only', 'django-insecure-', 'replace-'))):
+    raise ImproperlyConfigured('Use a unique random SECRET_KEY of at least 50 characters for HTTPS deployments.')
+ALLOWED_HOSTS=[x.strip() for x in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if x.strip()]
+if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
+    raise ImproperlyConfigured('Set explicit ALLOWED_HOSTS for HTTPS deployments; wildcard hosts are not allowed.')
+CSRF_TRUSTED_ORIGINS=[x.strip() for x in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if x.strip()]
+if not DEBUG and any(not origin.startswith('https://') or '*' in origin for origin in CSRF_TRUSTED_ORIGINS):
+    raise ImproperlyConfigured('CSRF_TRUSTED_ORIGINS must contain explicit https:// origins.')
+SECURE_SSL_REDIRECT=env_bool('SECURE_SSL_REDIRECT', not DEBUG)
+SESSION_COOKIE_SECURE=env_bool('SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE=env_bool('CSRF_COOKIE_SECURE', not DEBUG)
+SESSION_COOKIE_HTTPONLY=True
+SESSION_COOKIE_SAMESITE='Lax'
+CSRF_COOKIE_SAMESITE='Lax'
+SECURE_HSTS_SECONDS=int(os.getenv('SECURE_HSTS_SECONDS', '300' if not DEBUG else '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS=env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+SECURE_HSTS_PRELOAD=env_bool('SECURE_HSTS_PRELOAD', False)
+# Only enable behind a proxy that overwrites this header; keep the backend private.
+TRUST_PROXY_HEADERS=env_bool('TRUST_PROXY_HEADERS', False)
+SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_PROXY_HEADERS else None
+# Private container health checks use HTTP and expose only database availability.
+SECURE_REDIRECT_EXEMPT=[r'^health/$']
+if APP_ENV == 'production' and not all((SECURE_SSL_REDIRECT, SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE)):
+    raise ImproperlyConfigured('Production requires HTTPS redirects and secure session/CSRF cookies.')
 INSTALLED_APPS=['django.contrib.admin','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','operations']
 MIDDLEWARE=['django.middleware.security.SecurityMiddleware','whitenoise.middleware.WhiteNoiseMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF='salonops.urls'
 TEMPLATES=[{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[BASE_DIR/'templates'],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages','operations.context_processors.acting_branch']}}]
 WSGI_APPLICATION='salonops.wsgi.application'
 ASGI_APPLICATION='salonops.asgi.application'
-if os.getenv('POSTGRES_HOST'):
-    DATABASES={'default':{
+DATABASES={'default':{
         'ENGINE':'django.db.backends.postgresql',
-        'NAME':os.getenv('POSTGRES_DB','salon_operations'),
-        'USER':os.getenv('POSTGRES_USER','salon_user'),
-        'PASSWORD':os.getenv('POSTGRES_PASSWORD',''),
-        'HOST':os.getenv('POSTGRES_HOST','db'),
+        'NAME':required_env('POSTGRES_DB'),
+        'USER':required_env('POSTGRES_USER'),
+        'PASSWORD':required_env('POSTGRES_PASSWORD'),
+        'HOST':required_env('POSTGRES_HOST'),
         'PORT':os.getenv('POSTGRES_PORT','5432'),
         'CONN_MAX_AGE':60,
     }}
-else:
-    DATABASES={'default':{'ENGINE':'django.db.backends.sqlite3','NAME':BASE_DIR/'salon_db.sqlite3'}}
 AUTH_PASSWORD_VALIDATORS=[
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
