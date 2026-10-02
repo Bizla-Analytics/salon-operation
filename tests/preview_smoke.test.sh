@@ -15,6 +15,8 @@ tmp=$(mktemp -d)
 mkdir -p "$tmp/deploy/postgres" "$tmp/scripts" "$tmp/backups"
 cp "$root/compose.preview.yaml" "$tmp/"
 cp "$root/deploy/postgres/10-create-app-user.sh" "$tmp/deploy/postgres/"
+# Credentials stay private; this NON-secret script must be readable by Postgres.
+chmod 644 "$tmp/deploy/postgres/10-create-app-user.sh"
 cp "$root/scripts/"*.sh "$root/scripts/validate_preview.py" "$tmp/scripts/"
 {
     echo "SECRET_KEY=$(openssl rand -hex 64)"

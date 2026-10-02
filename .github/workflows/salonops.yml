@@ -97,6 +97,7 @@ jobs:
           mkdir -p "$root/deploy" "$root/scripts"
           cp compose.production.yaml compose.caddy.yaml compose.preview.yaml "$root/"
           cp -r deploy/postgres "$root/deploy/"
+          chmod 644 "$root/deploy/postgres/10-create-app-user.sh"
           cp deploy/Caddyfile "$root/deploy/"
           cp scripts/*.sh "$root/scripts/"
           cp scripts/validate_preview.py "$root/scripts/"
