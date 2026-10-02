@@ -5,12 +5,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/ops_common.sh"
 
 load_preview() {
     [[ $# == 4 ]] || die "Usage: ENV_FILE salonops-dev COMPOSE_FILE BACKUP_ROOT"
-    [[ "$2" == salonops-dev ]] || die "Private preview is restricted to salonops-dev."
+    [[ "$2" == salonops-dev ]] || die "Local-backup deployment is restricted to salonops-dev."
     PROJECT=$2
     ENV_FILE=$(realpath -e "$1")
     [[ "$(stat -c %a "$ENV_FILE")" == 600 || "$(stat -c %a "$ENV_FILE")" == 400 ]] || die "The preview env file must have mode 600 or 400."
     COMPOSE_FILE=$(realpath -e "$3")
-    [[ "$(basename "$COMPOSE_FILE")" == compose.preview.yaml ]] || die "Use standalone compose.preview.yaml."
+    validation_args=()
+    case "$(basename "$COMPOSE_FILE")" in
+        compose.preview.yaml) ;;
+        compose.test.yaml) validation_args=(--https) ;;
+        *) die "Use standalone compose.preview.yaml or compose.test.yaml for dev only." ;;
+    esac
     mkdir -p "$4"
     BACKUP_ROOT=$(realpath -e "$4")
     [[ "$BACKUP_ROOT" != / ]] || die "BACKUP_ROOT must not be /"
@@ -26,5 +31,5 @@ load_preview() {
         export SALONOPS_IMAGE=$(cat "$BACKUP_ROOT/$PROJECT.last-successful-image")
     fi
     # Validate effective configuration BEFORE touching any container or volume.
-    dc config --format json | python3 "$(dirname "${BASH_SOURCE[0]}")/validate_preview.py"
+    dc config --format json | python3 "$(dirname "${BASH_SOURCE[0]}")/validate_preview.py" "${validation_args[@]}"
 }

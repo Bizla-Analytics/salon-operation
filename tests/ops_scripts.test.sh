@@ -22,6 +22,13 @@ case " $* " in
 esac
 MOCK
 chmod +x "$tmp/bin/docker"
+cat > "$tmp/bin/curl" <<'MOCK'
+#!/usr/bin/env bash
+printf 'curl %q ' "$@" >> "$OPS_LOG"; printf '\n' >> "$OPS_LOG"
+[[ "${FAIL_TLS:-0}" != 1 ]]
+MOCK
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/sleep"
+chmod +x "$tmp/bin/curl" "$tmp/bin/sleep"
 printf 'SALONOPS_IMAGE=synthetic:testing\n' > "$tmp/app.env"
 printf 'RESTIC_REPOSITORY=s3:https://offsite.invalid/test\nRESTIC_PASSWORD=synthetic\n' > "$tmp/restic.env"
 touch "$tmp/compose.yaml"
@@ -114,4 +121,33 @@ fi
 [[ $(wc -l < "$OPS_LOG") == 1 ]]
 grep -q 'config --format json' "$OPS_LOG"
 
+# HTTPS-local also backs up before migration and never changes production mode.
+python3 "$root/tests/preview_config_fixture.py" --https > "$PREVIEW_CONFIG"
+touch "$tmp/compose.test.yaml"
+https_args=("$tmp/app.env" salonops-dev "$tmp/compose.test.yaml" "$tmp/https-backups")
+for flag in FAIL_DUMP EMPTY_DUMP FAIL_ARCHIVE; do
+    : > "$OPS_LOG"
+    if env "$flag=1" bash "$root/scripts/deploy_test_https.sh" "${https_args[@]}" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+        echo "HTTPS deployment accepted $flag" >&2; exit 1
+    fi
+    if grep -q 'manage.py migrate' "$OPS_LOG"; then echo 'HTTPS migrated before validated backup' >&2; exit 1; fi
+done
+: > "$OPS_LOG"
+bash "$root/scripts/deploy_test_https.sh" "${https_args[@]}" "$image" ghcr.io/example/salonops > /dev/null
+[[ $(grep -c pg_dump "$OPS_LOG") == 2 ]]
+first_dump=$(grep -n pg_dump "$OPS_LOG" | head -n1 | cut -d: -f1)
+migration=$(grep -n 'manage.py migrate --noinput' "$OPS_LOG" | cut -d: -f1)
+[[ "$first_dump" -lt "$migration" ]]
+grep -q 'check_production_security' "$OPS_LOG"
+grep -q 'curl.*--resolve.*operations.shahinanalytics.com' "$OPS_LOG"
+if grep -Eq -- '--insecure|restic|down.*-v' "$OPS_LOG"; then echo 'HTTPS safety contract failed' >&2; exit 1; fi
+if FAIL_TLS=1 bash "$root/scripts/deploy_test_https.sh" "$tmp/app.env" salonops-dev "$tmp/compose.test.yaml" "$tmp/tls-failure-backups" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+    echo 'Invalid origin TLS was accepted' >&2; exit 1
+fi
+[[ ! -f "$tmp/tls-failure-backups/salonops-dev.last-successful-image" ]]
+: > "$OPS_LOG"
+if bash "$root/scripts/deploy_test_https.sh" "$tmp/app.env" salonops-prod "$tmp/compose.test.yaml" "$tmp/https-backups" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+    echo 'HTTPS-local accepted production project' >&2; exit 1
+fi
+[[ ! -s "$OPS_LOG" ]]
 echo 'Operational script safety/ordering tests: PASSED'

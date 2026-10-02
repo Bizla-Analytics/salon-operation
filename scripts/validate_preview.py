@@ -3,16 +3,16 @@ import json
 import sys
 
 
-def validate(config):
+def validate(config, https=False):
     def require(condition):
         if not condition:
-            raise ValueError('Unsafe private-preview configuration; use the unmodified compose.preview.yaml.')
+            raise ValueError('Unsafe local-backup test configuration; use the reviewed standalone Compose file.')
 
     require(config.get('name') == 'salonops-dev')
     services = config.get('services', {})
-    require(set(services) == {'web', 'db'})
+    require(set(services) == ({'web', 'db', 'proxy'} if https else {'web', 'db'}))
     web, db = services['web'], services['db']
-    for service in (web, db):
+    for service in services.values():
         require(not service.get('network_mode') and not service.get('privileged'))
         require(not service.get('container_name'))
         require(service.get('networks') == {'default': None} or
@@ -28,6 +28,15 @@ def validate(config):
         'POSTGRES_USER': 'salonops_dev_app', 'AUTO_MIGRATE': 'false',
         'CHECK_DEPLOY': 'false',
     }
+    if https:
+        fixed.update({
+            'APP_ENV': 'production',
+            'ALLOWED_HOSTS': 'operations.shahinanalytics.com,localhost,127.0.0.1',
+            'CSRF_TRUSTED_ORIGINS': 'https://operations.shahinanalytics.com',
+            'TRUST_PROXY_HEADERS': 'True', 'SECURE_SSL_REDIRECT': 'True',
+            'SESSION_COOKIE_SECURE': 'True', 'CSRF_COOKIE_SECURE': 'True',
+            'SECURE_HSTS_SECONDS': '300', 'CHECK_DEPLOY': 'true',
+        })
     environment = web.get('environment', {})
     require(all(environment.get(key) == value for key, value in fixed.items()))
     require(set(environment) == set(fixed) | {'SECRET_KEY', 'POSTGRES_PASSWORD', 'TIME_ZONE'})
@@ -45,7 +54,7 @@ def validate(config):
                             'APP_DB_USER', 'APP_DB_PASSWORD'})
     require(db_env.get('APP_DB_PASSWORD') == environment.get('POSTGRES_PASSWORD'))
     volumes = config.get('volumes', {})
-    require(set(volumes) == {'postgres_data'})
+    require(set(volumes) == ({'postgres_data', 'caddy_data', 'caddy_config'} if https else {'postgres_data'}))
     require(volumes['postgres_data'] == {'name': 'salonops-dev-pgdata'})
     mounts = db.get('volumes', [])
     require(len(mounts) == 2)
@@ -61,13 +70,35 @@ def validate(config):
     # Compose v5 emits an empty ipam object; v2 usually omits it.
     require(network.pop('ipam', {}) == {})
     require(network == {'name': 'salonops-dev_default'})
+    if https:
+        proxy = services['proxy']
+        require(proxy.get('image') == 'caddy:2-alpine' and not proxy.get('environment'))
+        ports = proxy.get('ports', [])
+        require(len(ports) == 2)
+        require({(p.get('target'), str(p.get('published')), p.get('protocol'),
+                  p.get('host_ip', '0.0.0.0')) for p in ports} ==
+                {(80, '80', 'tcp', '0.0.0.0'), (443, '443', 'tcp', '0.0.0.0')})
+        require(volumes['caddy_data'] == {'name': 'salonops-dev-caddy-data'})
+        require(volumes['caddy_config'] == {'name': 'salonops-dev-caddy-config'})
+        mounts = proxy.get('volumes', [])
+        require(len(mounts) == 3)
+        config_mount, data_mount, cache_mount = mounts
+        require(config_mount.get('type') == 'bind' and config_mount.get('read_only') is True and
+                config_mount.get('source', '').replace('\\', '/').endswith('/deploy/Caddyfile.test') and
+                config_mount.get('target') == '/etc/caddy/Caddyfile')
+        require(data_mount.get('type') == 'volume' and data_mount.get('source') == 'caddy_data' and
+                data_mount.get('target') == '/data')
+        require(cache_mount.get('type') == 'volume' and cache_mount.get('source') == 'caddy_config' and
+                cache_mount.get('target') == '/config')
 
 
 if __name__ == '__main__':
     try:
         # PowerShell's native pipeline can prepend a UTF-8 BOM.
-        validate(json.loads(sys.stdin.read().removeprefix('\ufeff')))
+        if sys.argv[1:] not in ([], ['--https']):
+            raise ValueError('Unknown test mode.')
+        validate(json.loads(sys.stdin.read().removeprefix('\ufeff')), https=bool(sys.argv[1:]))
     except (ValueError, KeyError, TypeError, AttributeError):
         # Never dump Compose JSON: it contains secrets.
-        print('ERROR: Invalid or unsafe private-preview Compose configuration.', file=sys.stderr)
+        print('ERROR: Invalid or unsafe local-backup test Compose configuration.', file=sys.stderr)
         sys.exit(1)

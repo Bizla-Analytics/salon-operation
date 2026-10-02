@@ -1,0 +1,84 @@
+# Standalone DEV HTTPS with local backups. Never combine with other Compose files.
+services:
+  web:
+    image: ${SALONOPS_IMAGE:?Use the tested image supplied by the dev workflow}
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in /etc/salonops/dev.env}
+      ALLOWED_HOSTS: operations.shahinanalytics.com,localhost,127.0.0.1
+      CSRF_TRUSTED_ORIGINS: https://operations.shahinanalytics.com
+      TIME_ZONE: Asia/Kolkata
+      TRUST_PROXY_HEADERS: "True"
+      SECURE_SSL_REDIRECT: "True"
+      SESSION_COOKIE_SECURE: "True"
+      CSRF_COOKIE_SECURE: "True"
+      SECURE_HSTS_SECONDS: "300"
+      SECURE_HSTS_INCLUDE_SUBDOMAINS: "False"
+      SECURE_HSTS_PRELOAD: "False"
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: salonops_dev
+      POSTGRES_USER: salonops_dev_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the existing app DB password}
+      AUTO_MIGRATE: "false"
+      CHECK_DEPLOY: "true"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: salonops_dev
+      POSTGRES_USER: salonops_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set the existing bootstrap password}
+      APP_DB_USER: salonops_dev_app
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set the existing app DB password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/10-create-app-user.sh:/docker-entrypoint-initdb.d/10-create-app-user.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\"$$APP_DB_PASSWORD\" psql -h 127.0.0.1 -U \"$$APP_DB_USER\" -d \"$$POSTGRES_DB\" -tAc 'SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile.test:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  postgres_data:
+    # Same volume as private preview: switching to HTTPS preserves test records.
+    name: salonops-dev-pgdata
+  caddy_data:
+    name: salonops-dev-caddy-data
+  caddy_config:
+    name: salonops-dev-caddy-config

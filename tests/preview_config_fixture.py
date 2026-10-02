@@ -1,7 +1,7 @@
 """Synthetic resolved Compose fixture for offline safety tests; no credentials."""
 
-def preview_config():
-    return {
+def preview_config(https=False):
+    config = {
         'name': 'salonops-dev',
         'services': {
             'web': {
@@ -37,8 +37,33 @@ def preview_config():
         'volumes': {'postgres_data': {'name': 'salonops-dev-pgdata'}},
         'networks': {'default': {'name': 'salonops-dev_default'}},
     }
+    if https:
+        config['services']['web']['environment'].update({
+            'APP_ENV': 'production',
+            'ALLOWED_HOSTS': 'operations.shahinanalytics.com,localhost,127.0.0.1',
+            'CSRF_TRUSTED_ORIGINS': 'https://operations.shahinanalytics.com',
+            'TRUST_PROXY_HEADERS': 'True', 'SECURE_SSL_REDIRECT': 'True',
+            'SESSION_COOKIE_SECURE': 'True', 'CSRF_COOKIE_SECURE': 'True',
+            'SECURE_HSTS_SECONDS': '300', 'CHECK_DEPLOY': 'true',
+        })
+        config['services']['proxy'] = {
+            'image': 'caddy:2-alpine', 'networks': {'default': None},
+            'ports': [{'target': p, 'published': str(p), 'protocol': 'tcp'} for p in (80, 443)],
+            'volumes': [
+                {'type': 'bind', 'source': '/opt/salonops-dev/deploy/Caddyfile.test',
+                 'target': '/etc/caddy/Caddyfile', 'read_only': True},
+                {'type': 'volume', 'source': 'caddy_data', 'target': '/data'},
+                {'type': 'volume', 'source': 'caddy_config', 'target': '/config'},
+            ],
+        }
+        config['volumes'].update({
+            'caddy_data': {'name': 'salonops-dev-caddy-data'},
+            'caddy_config': {'name': 'salonops-dev-caddy-config'},
+        })
+    return config
 
 
 if __name__ == '__main__':
     import json
-    print(json.dumps(preview_config()))
+    import sys
+    print(json.dumps(preview_config(https=sys.argv[1:] == ['--https'])))

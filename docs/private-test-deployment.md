@@ -1,5 +1,9 @@
 # Private test VPS: dev branch, no domain or S3
 
+If using the new public test domain, follow
+[Caddy HTTPS with local backups](test-https-deployment.md) instead. The old
+`local-preview` mode remains SSH-only; `https-local` is the explicit new option.
+
 This is an **optional dev-only preview**, not public production hosting.
 `main`, its HTTPS/secure-cookie requirements and mandatory encrypted off-server
 backup workflow are unchanged. Use synthetic test records, not company/customer

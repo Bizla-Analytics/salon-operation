@@ -95,13 +95,18 @@ jobs:
         run: |
           root=/opt/salonops-dev
           mkdir -p "$root/deploy" "$root/scripts"
-          cp compose.production.yaml compose.caddy.yaml compose.preview.yaml "$root/"
+          cp compose.production.yaml compose.caddy.yaml compose.preview.yaml compose.test.yaml "$root/"
           cp -r deploy/postgres "$root/deploy/"
           chmod 644 "$root/deploy/postgres/10-create-app-user.sh"
           cp deploy/Caddyfile "$root/deploy/"
+          cp deploy/Caddyfile.test "$root/deploy/"
+          chmod 644 "$root/deploy/Caddyfile.test"
           cp scripts/*.sh "$root/scripts/"
           cp scripts/validate_preview.py "$root/scripts/"
           case "$SALONOPS_TEST_DEPLOY_MODE" in
+            https-local)
+              bash "$root/scripts/deploy_test_https.sh" /etc/salonops/dev.env salonops-dev "$root/compose.test.yaml" /var/lib/salonops-dev/backups "$SALONOPS_IMAGE" "$REGISTRY_PATH"
+              ;;
             local-preview)
               bash "$root/scripts/deploy_preview.sh" /etc/salonops/dev.env salonops-dev "$root/compose.preview.yaml" /var/lib/salonops-dev/backups "$SALONOPS_IMAGE" "$REGISTRY_PATH"
               ;;

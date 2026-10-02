@@ -1,0 +1,10 @@
+{
+    admin off
+}
+
+operations.shahinanalytics.com {
+    reverse_proxy web:8000 {
+        # Overwrite any client-supplied scheme; Django trusts this private proxy.
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

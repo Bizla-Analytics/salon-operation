@@ -13,7 +13,9 @@ if [[ -n "$(docker ps -aq --filter label=com.docker.compose.project=salonops-dev
 fi
 tmp=$(mktemp -d)
 mkdir -p "$tmp/deploy/postgres" "$tmp/scripts" "$tmp/backups"
-cp "$root/compose.preview.yaml" "$tmp/"
+cp "$root/compose.preview.yaml" "$root/compose.test.yaml" "$tmp/"
+cp "$root/deploy/Caddyfile.test" "$tmp/deploy/"
+chmod 644 "$tmp/deploy/Caddyfile.test"
 cp "$root/deploy/postgres/10-create-app-user.sh" "$tmp/deploy/postgres/"
 # Credentials stay private; this NON-secret script must be readable by Postgres.
 chmod 644 "$tmp/deploy/postgres/10-create-app-user.sh"
@@ -45,3 +47,35 @@ mapfile -t dumps < <(find "$tmp/backups" -name database.dump)
 [[ ${#dumps[@]} == 1 ]]
 bash "$tmp/scripts/restore_rehearsal.sh" "${dumps[0]}"
 echo 'Private preview real PostgreSQL smoke and isolated restore: PASSED'
+
+# Switch the SAME test volume to HTTPS. Test Caddy with an isolated CI CA:
+# never request a public certificate for the user's real domain from CI.
+dc stop web
+load_preview "$tmp/app.env" salonops-dev "$tmp/compose.test.yaml" "$tmp/backups"
+dc run --rm --no-deps proxy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null
+sed -i '/^operations.shahinanalytics.com {/a\    tls internal' "$tmp/deploy/Caddyfile.test"
+dc up -d --wait --wait-timeout 120
+dc exec -T web python manage.py check_production_security
+dc exec -T web python manage.py shell -c "from operations.models import Branch; assert Branch.objects.filter(code='CI_PREVIEW').exists(); print('HTTPS transition preserved test data')"
+proxy_id=$(dc ps -q proxy)
+ready=false
+for attempt in $(seq 1 30); do
+    if docker cp "$proxy_id:/data/caddy/pki/authorities/local/root.crt" "$tmp/root.crt" > /dev/null 2>&1; then ready=true; break; fi
+    sleep 1
+done
+[[ "$ready" == true ]]
+headers="$tmp/https.headers"
+curl --fail --silent --show-error --retry 5 --retry-connrefused \
+    --cacert "$tmp/root.crt" --resolve operations.shahinanalytics.com:443:127.0.0.1 \
+    -D "$headers" https://operations.shahinanalytics.com/login/ > /dev/null
+grep -qi 'set-cookie:.*Secure' "$headers"
+grep -qi 'strict-transport-security: max-age=300' "$headers"
+code=$(curl --silent --show-error --resolve operations.shahinanalytics.com:80:127.0.0.1 \
+    -o /dev/null -w '%{http_code}' http://operations.shahinanalytics.com/login/)
+[[ "$code" == 308 ]]
+dc exec -T web python -c "import os; assert 'POSTGRES_ADMIN_PASSWORD' not in os.environ; assert os.environ['DEBUG']=='False'; assert os.environ['SESSION_COOKIE_SECURE']=='True'"
+bash "$tmp/scripts/backup_preview.sh" "$tmp/app.env" salonops-dev "$tmp/compose.test.yaml" "$tmp/backups"
+mapfile -t dumps < <(find "$tmp/backups" -name database.dump | sort)
+[[ ${#dumps[@]} == 2 ]]
+bash "$tmp/scripts/restore_rehearsal.sh" "${dumps[1]}"
+echo 'Test HTTPS/Caddy, secure cookies, data preservation and local restore: PASSED'

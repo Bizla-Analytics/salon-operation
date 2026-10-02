@@ -208,6 +208,8 @@ The account-menu JavaScript unit tests can also be run with
 For a test VPS without a domain or S3, see the optional
 [private dev deployment guide](docs/private-test-deployment.md). It uses local
 PostgreSQL backups and SSH-tunnel access only; production protections are unchanged.
+For `operations.shahinanalytics.com`, use the
+[test HTTPS/Caddy and local-backup guide](docs/test-https-deployment.md) instead.
 
 The canonical remote is `https://github.com/Bizla-Analytics/salon-operation.git`.
 The two permanent branches are `dev` (your test server) and `main` (company

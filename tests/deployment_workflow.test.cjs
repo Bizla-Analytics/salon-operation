@@ -37,7 +37,14 @@ test('production deployment targets main without renaming persistent resources',
     assert.match(block, /root=\/opt\/salonops-prod/);
     assert.match(block, /\/etc\/salonops\/prod\.env salonops-prod/);
     assert.match(block, /\/var\/lib\/salonops-prod\/backups/);
-    assert.doesNotMatch(block, /deploy_preview|compose\.preview|SALONOPS_TEST_DEPLOY_MODE/);
+    assert.doesNotMatch(block, /deploy_preview|compose\.preview|SALONOPS_TEST_DEPLOY_MODE|deploy_test_https|compose\.test/);
+});
+
+test('HTTPS with local backups is confined to the dev runner and fixed test stack', () => {
+    const block = job('deploy-test');
+    assert.match(block, /https-local\)\s+bash "\$root\/scripts\/deploy_test_https\.sh"/);
+    assert.match(block, /\/etc\/salonops\/dev\.env salonops-dev "\$root\/compose\.test\.yaml"/);
+    assert.match(block, /cp deploy\/Caddyfile\.test/);
 });
 
 test('private preview is an explicit test-only mode; secure deployment remains the default', () => {
