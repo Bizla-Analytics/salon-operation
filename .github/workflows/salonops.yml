@@ -50,6 +50,9 @@ jobs:
           node --test tests/*.test.cjs
           docker compose exec -T -e APP_ENV=production -e DEBUG=False -e TRUST_PROXY_HEADERS=True web python manage.py check_production_security
           bash tests/ops_scripts.test.sh
+          # Free CI's port 8000 before the standalone preview smoke test.
+          docker compose stop web
+          bash tests/preview_smoke.test.sh
       - name: Publish only a tested branch-push image
         id: publish
         if: github.event_name == 'push'
@@ -79,6 +82,7 @@ jobs:
       group: salonops-testing-deployment
       cancel-in-progress: false
     env:
+      SALONOPS_TEST_DEPLOY_MODE: ${{ vars.SALONOPS_TEST_DEPLOY_MODE || 'secure' }}
       SALONOPS_USE_CADDY: ${{ vars.SALONOPS_USE_CADDY || 'false' }}
       SALONOPS_IMAGE: ${{ needs.checks.outputs.image }}
       REGISTRY_PATH: ${{ needs.checks.outputs.registry_path }}
@@ -91,11 +95,20 @@ jobs:
         run: |
           root=/opt/salonops-dev
           mkdir -p "$root/deploy" "$root/scripts"
-          cp compose.production.yaml compose.caddy.yaml "$root/"
+          cp compose.production.yaml compose.caddy.yaml compose.preview.yaml "$root/"
           cp -r deploy/postgres "$root/deploy/"
           cp deploy/Caddyfile "$root/deploy/"
           cp scripts/*.sh "$root/scripts/"
-          bash "$root/scripts/deploy.sh" /etc/salonops/dev.env salonops-dev "$root/compose.production.yaml" /var/lib/salonops-dev/backups /etc/salonops/dev.restic.env "$SALONOPS_IMAGE" "$REGISTRY_PATH"
+          cp scripts/validate_preview.py "$root/scripts/"
+          case "$SALONOPS_TEST_DEPLOY_MODE" in
+            local-preview)
+              bash "$root/scripts/deploy_preview.sh" /etc/salonops/dev.env salonops-dev "$root/compose.preview.yaml" /var/lib/salonops-dev/backups "$SALONOPS_IMAGE" "$REGISTRY_PATH"
+              ;;
+            secure)
+              bash "$root/scripts/deploy.sh" /etc/salonops/dev.env salonops-dev "$root/compose.production.yaml" /var/lib/salonops-dev/backups /etc/salonops/dev.restic.env "$SALONOPS_IMAGE" "$REGISTRY_PATH"
+              ;;
+            *) echo 'Unknown test deployment mode; refusing deployment.' >&2; exit 1 ;;
+          esac
   deploy-production:
     needs: checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SALONOPS_PROD_AUTODEPLOY == 'true'

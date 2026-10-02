@@ -1,5 +1,10 @@
 # SalonOps: test and production deployment
 
+For the optional **dev-only private preview** without a domain or off-server
+storage, use [private-test-deployment.md](private-test-deployment.md). It is not
+public production hosting. The secure workflow described below remains the
+default and the only production mode.
+
 ## What is ready, and what still needs company access
 
 The application now requires PostgreSQL; there is no SQLite fallback. The

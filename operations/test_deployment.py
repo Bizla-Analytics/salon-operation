@@ -78,6 +78,42 @@ class ProductionSettingsTests(SimpleTestCase):
             with self.subTest(changes=changes):
                 self.assertNotEqual(self.settings_process(changes).returncode, 0)
 
+    def preview_settings(self, changes=None):
+        config = {
+            'APP_ENV': 'private-preview', 'DEBUG': 'False',
+            'ALLOWED_HOSTS': 'localhost,127.0.0.1', 'CSRF_TRUSTED_ORIGINS': '',
+            'SECURE_SSL_REDIRECT': 'False', 'SESSION_COOKIE_SECURE': 'False',
+            'CSRF_COOKIE_SECURE': 'False', 'SECURE_HSTS_SECONDS': '0',
+            'TRUST_PROXY_HEADERS': 'False',
+        }
+        config.update(changes or {})
+        return self.settings_process(config)
+
+    def test_private_preview_is_non_debug_postgresql_with_local_http(self):
+        process = self.preview_settings()
+        self.assertEqual(process.returncode, 0, process.stderr)
+        config = json.loads(process.stdout)
+        self.assertEqual(config['engine'], 'django.db.backends.postgresql')
+        self.assertFalse(config['redirect'])
+        self.assertFalse(config['session_secure'])
+        self.assertFalse(config['csrf_secure'])
+        self.assertEqual(config['hsts'], 0)
+        self.assertIsNone(config['proxy'])
+
+    def test_private_preview_rejects_debug_public_hosts_and_proxy_trust(self):
+        for changes in [
+            {'DEBUG': 'True'}, {'ALLOWED_HOSTS': '*'},
+            {'ALLOWED_HOSTS': 'localhost,127.0.0.1,203.0.113.10'},
+            {'CSRF_TRUSTED_ORIGINS': 'https://salon.example.com'},
+            {'TRUST_PROXY_HEADERS': 'True'}, {'SECURE_HSTS_SECONDS': '300'},
+            {'SESSION_COOKIE_SECURE': 'True'},
+        ]:
+            with self.subTest(changes=changes):
+                self.assertNotEqual(self.preview_settings(changes).returncode, 0)
+
+    def test_private_preview_flags_do_not_bypass_production_security(self):
+        self.assertNotEqual(self.preview_settings({'APP_ENV': 'production'}).returncode, 0)
+
     def test_database_security_command_rejects_server_administrator_roles(self):
         with patch('operations.management.commands.check_database_security.connection') as connection:
             connection.vendor = 'postgresql'

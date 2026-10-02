@@ -37,4 +37,13 @@ test('production deployment targets main without renaming persistent resources',
     assert.match(block, /root=\/opt\/salonops-prod/);
     assert.match(block, /\/etc\/salonops\/prod\.env salonops-prod/);
     assert.match(block, /\/var\/lib\/salonops-prod\/backups/);
+    assert.doesNotMatch(block, /deploy_preview|compose\.preview|SALONOPS_TEST_DEPLOY_MODE/);
+});
+
+test('private preview is an explicit test-only mode; secure deployment remains the default', () => {
+    const block = job('deploy-test');
+    assert.ok(block.includes("SALONOPS_TEST_DEPLOY_MODE: ${{ vars.SALONOPS_TEST_DEPLOY_MODE || 'secure' }}"));
+    assert.match(block, /local-preview\)\s+bash "\$root\/scripts\/deploy_preview\.sh"/);
+    assert.match(block, /secure\)\s+bash "\$root\/scripts\/deploy\.sh"/);
+    assert.match(block, /Unknown test deployment mode; refusing deployment/);
 });

@@ -205,6 +205,10 @@ The account-menu JavaScript unit tests can also be run with
 
 ## Git workflow
 
+For a test VPS without a domain or S3, see the optional
+[private dev deployment guide](docs/private-test-deployment.md). It uses local
+PostgreSQL backups and SSH-tunnel access only; production protections are unchanged.
+
 The canonical remote is `https://github.com/Bizla-Analytics/salon-operation.git`.
 The two permanent branches are `dev` (your test server) and `main` (company
 production and GitHub's default branch). Promote tested changes from `dev` into

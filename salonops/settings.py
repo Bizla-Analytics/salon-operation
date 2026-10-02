@@ -46,6 +46,13 @@ SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_PROXY_HEADE
 SECURE_REDIRECT_EXEMPT=[r'^health/$']
 if APP_ENV == 'production' and not all((SECURE_SSL_REDIRECT, SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE)):
     raise ImproperlyConfigured('Production requires HTTPS redirects and secure session/CSRF cookies.')
+if APP_ENV == 'private-preview' and (
+    DEBUG or set(ALLOWED_HOSTS) != {'localhost', '127.0.0.1'} or CSRF_TRUSTED_ORIGINS
+    or TRUST_PROXY_HEADERS or SECURE_SSL_REDIRECT or SESSION_COOKIE_SECURE
+    or CSRF_COOKIE_SECURE or SECURE_HSTS_SECONDS != 0
+    or SECURE_HSTS_INCLUDE_SUBDOMAINS or SECURE_HSTS_PRELOAD
+):
+    raise ImproperlyConfigured('Private preview requires DEBUG=False, localhost-only hosts and SSH-tunnel HTTP settings.')
 INSTALLED_APPS=['django.contrib.admin','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','operations']
 MIDDLEWARE=['django.middleware.security.SecurityMiddleware','whitenoise.middleware.WhiteNoiseMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF='salonops.urls'

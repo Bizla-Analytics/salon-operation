@@ -13,8 +13,9 @@ cat > "$tmp/bin/docker" <<'MOCK'
 set -eu
 printf '%q ' "$@" >> "$OPS_LOG"; printf '\n' >> "$OPS_LOG"
 case " $* " in
-  *pg_dump*) printf 'PGDMP synthetic archive\n' ;;
-  *'pg_restore --list'*) cat > /dev/null ;;
+  *' config --format json '*) cat "$PREVIEW_CONFIG" ;;
+  *pg_dump*) [[ "${FAIL_DUMP:-0}" != 1 ]] || exit 7; [[ "${EMPTY_DUMP:-0}" == 1 ]] || printf 'PGDMP synthetic archive\n' ;;
+  *'pg_restore --list'*) [[ "${FAIL_ARCHIVE:-0}" != 1 ]] || exit 7; cat > /dev/null ;;
   *' ps -q web '*) ;;
   *' backup '*) [[ "${FAIL_UPLOAD:-0}" != 1 ]] || exit 7 ;;
   *' run -d --name salonops-rehearsal-'*) echo synthetic-container ;;
@@ -65,4 +66,52 @@ for bad in synthetic:latest "ghcrXio/example/salonops@sha256:$(printf '%064d' 0)
     if bash "$root/scripts/deploy.sh" "${args[@]}" "$bad" ghcr.io/example/salonops > /dev/null 2>&1; then echo 'Unapproved image accepted' >&2; exit 1; fi
     [[ ! -s "$OPS_LOG" ]]
 done
+# The optional preview path must never weaken production's Restic requirement.
+python3 "$root/tests/preview_config_fixture.py" > "$tmp/preview.json"
+export PREVIEW_CONFIG="$tmp/preview.json"
+touch "$tmp/compose.preview.yaml"
+chmod 600 "$tmp/app.env"
+preview_args=("$tmp/app.env" salonops-dev "$tmp/compose.preview.yaml" "$tmp/preview-backups")
+for flag in FAIL_DUMP EMPTY_DUMP FAIL_ARCHIVE; do
+    : > "$OPS_LOG"
+    if env "$flag=1" bash "$root/scripts/deploy_preview.sh" "${preview_args[@]}" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+        echo "Preview deployment accepted $flag" >&2; exit 1
+    fi
+    if grep -q 'manage.py migrate' "$OPS_LOG"; then echo 'Preview migrated before validated backup' >&2; exit 1; fi
+done
+: > "$OPS_LOG"
+bash "$root/scripts/deploy_preview.sh" "${preview_args[@]}" "$image" ghcr.io/example/salonops > /dev/null
+[[ $(grep -c pg_dump "$OPS_LOG") == 2 ]]
+first_dump=$(grep -n pg_dump "$OPS_LOG" | head -n1 | cut -d: -f1)
+migration=$(grep -n 'manage.py migrate --noinput' "$OPS_LOG" | cut -d: -f1)
+[[ "$first_dump" -lt "$migration" ]]
+[[ "$(cat "$tmp/preview-backups/salonops-dev.last-successful-image")" == "$image" ]]
+if grep -Eq 'restic|offsite|down.*-v' "$OPS_LOG"; then echo 'Preview used offsite or destructive cleanup' >&2; exit 1; fi
+bash "$root/scripts/backup_preview.sh" "${preview_args[@]}" > /dev/null
+for project in salonops-prod main; do
+    : > "$OPS_LOG"
+    if bash "$root/scripts/deploy_preview.sh" "$tmp/app.env" "$project" "$tmp/compose.preview.yaml" "$tmp/preview-backups" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+        echo 'Preview accepted production project' >&2; exit 1
+    fi
+    [[ ! -s "$OPS_LOG" ]]
+done
+: > "$OPS_LOG"
+if bash "$root/scripts/deploy_preview.sh" "${preview_args[@]}" synthetic:latest ghcr.io/example/salonops > /dev/null 2>&1; then
+    echo 'Preview accepted mutable image' >&2; exit 1
+fi
+[[ ! -s "$OPS_LOG" ]]
+chmod 644 "$tmp/app.env"
+if bash "$root/scripts/deploy_preview.sh" "${preview_args[@]}" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+    echo 'Preview accepted publicly readable credentials' >&2; exit 1
+fi
+[[ ! -s "$OPS_LOG" ]]
+chmod 600 "$tmp/app.env"
+# Real config rejection happens before any pull, start, dump, or migration.
+python3 -c 'import json,sys; p=sys.argv[1]; c=json.load(open(p)); c["services"]["web"]["ports"][0]["host_ip"]="0.0.0.0"; json.dump(c,open(p,"w"))' "$PREVIEW_CONFIG"
+if bash "$root/scripts/deploy_preview.sh" "${preview_args[@]}" "$image" ghcr.io/example/salonops > /dev/null 2>&1; then
+    echo 'Preview accepted public HTTP' >&2; exit 1
+fi
+[[ $(wc -l < "$OPS_LOG") == 1 ]]
+grep -q 'config --format json' "$OPS_LOG"
+
 echo 'Operational script safety/ordering tests: PASSED'
