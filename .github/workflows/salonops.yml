@@ -1,9 +1,9 @@
 name: SalonOps checks and deployment
 on:
   push:
-    branches: [dev, prod]
+    branches: [dev, main]
   pull_request:
-    branches: [dev, prod]
+    branches: [dev, main]
 permissions:
   contents: read
 concurrency:
@@ -98,7 +98,7 @@ jobs:
           bash "$root/scripts/deploy.sh" /etc/salonops/dev.env salonops-dev "$root/compose.production.yaml" /var/lib/salonops-dev/backups /etc/salonops/dev.restic.env "$SALONOPS_IMAGE" "$REGISTRY_PATH"
   deploy-production:
     needs: checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/prod' && vars.SALONOPS_PROD_AUTODEPLOY == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SALONOPS_PROD_AUTODEPLOY == 'true'
     runs-on: [self-hosted, Linux, X64, salonops-production]
     environment: production
     timeout-minutes: 30

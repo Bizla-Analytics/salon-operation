@@ -9,8 +9,16 @@ They are separate containers, not a database baked into the app image.
 
 CI tests on GitHub-hosted machines, publishes a tested image to GHCR, then
 optionally deploys that exact image digest through a server-specific runner.
-`dev` targets your test VPS; `prod` targets the company VPS. Neither auto-deploy
+`dev` targets your test VPS; `main` targets the company VPS. Neither auto-deploy
 job activates until its opt-in variable is set to `true`.
+
+The two permanent branches are `dev` and `main`; `main` is GitHub's default
+branch and contains approved production releases. Production still uses the
+`production` environment, `salonops-production` runner label and
+`SALONOPS_PROD_AUTODEPLOY` switch. Existing `/opt/salonops-prod`,
+`/etc/salonops/prod.env`, backup paths, timer instance names and DB volume names
+do **not** change when the branch changes. Never rename a DB volume to match a
+Git branch. The retired `prod` branch is not needed.
 
 This repository does not install a runner, issue a certificate, create a backup
 bucket, configure GitHub protection rules, or change an existing server. The
@@ -162,7 +170,7 @@ need investigation, including disk-space monitoring.
 ## 5. GitHub and runner setup
 
 1. In GitHub create environments **testing** and **production**, restrict their
-   deployment branches to `dev` and `prod` respectively. Protect both branches:
+   deployment branches to `dev` and `main` respectively. Protect both branches:
    require CI/reviews, block force pushes; production should require company
    approval. Review workflow, Compose and scripts via company CODEOWNERS. Some
    private-repository protection/approval features depend on the GitHub plan;
@@ -201,7 +209,7 @@ in this workflow run only on GitHub-hosted machines and cannot deploy.
 
 ## 6. First release and normal updates
 
-The first push to `dev`/`prod` runs CI and publishes
+The first push to `dev`/`main` runs CI and publishes
 `ghcr.io/bizla-analytics/salon-operation:<commit>`; find the immutable digest in
 the publish log. Save it in the external env file. Manually deploy the approved
 digest as the deployment user (optionally `export SALONOPS_USE_CADDY=true` first):
@@ -226,7 +234,7 @@ service ordering, verification/invoice/feedback and secure cookies in a browser.
 Once configured:
 
 - Work locally on a feature branch → PR into `dev` → tests → your test VPS.
-- Test with synthetic data → approved PR from `dev` into `prod` → tests → company
+- Test with synthetic data → approved PR from `dev` into `main` → tests → company
   approval if configured → company VPS. Branches transfer **code**, not databases.
 - Commit Django migrations alongside model changes. Use backwards-compatible
   expand/contract migrations; plan a write-maintenance window for incompatible

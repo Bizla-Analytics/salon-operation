@@ -98,7 +98,7 @@ The employee sees only their assigned jobs. Inside a job, the page shows one cur
 ## Production deployment
 
 Follow [the deployment and recovery guide](docs/production-deployment.md) for
-`dev` / `prod` branches, GitHub Actions runners, dedicated Docker PostgreSQL,
+`dev` / `main` branches, GitHub Actions runners, dedicated Docker PostgreSQL,
 HTTPS via the company proxy or optional Caddy, encrypted off-server backups and
 isolated restore rehearsals. Automatic VPS deployment is disabled until enabled
 explicitly after company setup. Never use the local Compose file for production.
@@ -206,8 +206,10 @@ The account-menu JavaScript unit tests can also be run with
 ## Git workflow
 
 The canonical remote is `https://github.com/Bizla-Analytics/salon-operation.git`.
-Develop on a feature branch and review into `dev` for the test server. Promote
-tested changes from `dev` into `prod` for the company server:
+The two permanent branches are `dev` (your test server) and `main` (company
+production and GitHub's default branch). Promote tested changes from `dev` into
+`main` through a reviewed pull request. Optional temporary feature branches can
+be reviewed into `dev` and removed after merging:
 
 ```powershell
 git switch -c feature/short-description
