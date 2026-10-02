@@ -41,7 +41,8 @@ def synthetic_workbook(change=None):
         sheet = book.create_sheet(name)
         sheet.append(headers)
         for record in records.get(name, []):
-            sheet.append([record.get(header, "") for header in headers])
+            # Real Excel omits trailing empty cells; exercise that format as well.
+            sheet.append([record.get(header) for header in headers])
     output = io.BytesIO()
     book.save(output)
     book.close()

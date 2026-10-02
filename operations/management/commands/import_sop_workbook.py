@@ -22,7 +22,10 @@ def rows(sheet):
     values = sheet.iter_rows(values_only=True)
     headers = [str(value).strip() if value is not None else "" for value in next(values, ())]
     for row in values:
-        record = dict(zip(headers, row))
+        # Reset dimensions to read all rows, but real Excel files may omit trailing
+        # blank cells. Keep every header so optional notes/columns remain present.
+        record = {header: row[index] if index < len(row) else None
+                  for index, header in enumerate(headers)}
         if any(value not in (None, "") for value in record.values()):
             yield record
 
