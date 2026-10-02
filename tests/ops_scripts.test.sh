@@ -55,6 +55,7 @@ if grep -q 'forget' "$OPS_LOG"; then echo 'Retention ran after failed upload' >&
 : > "$OPS_LOG"
 bash "$root/scripts/restore_rehearsal.sh" "${dumps[0]}" > /dev/null
 grep -q -- '--network none' "$OPS_LOG"
+grep -q 'psql -h 127.0.0.1.*salonops_rehearsal' "$OPS_LOG"
 grep -q -- '--exit-on-error --no-owner --no-acl' "$OPS_LOG"
 grep -q 'rm -f -v salonops-rehearsal-' "$OPS_LOG"
 if grep -Eq 'type=bind|compose|--publish' "$OPS_LOG"; then echo 'Rehearsal accessed production mounts/network' >&2; exit 1; fi

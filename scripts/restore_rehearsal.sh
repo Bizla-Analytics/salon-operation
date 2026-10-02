@@ -19,7 +19,10 @@ docker run -d --name "$name" --network none \
 created=true
 ready=false
 for i in $(seq 1 60); do
-    if docker exec "$name" pg_isready -U rehearsal_user -d salonops_rehearsal > /dev/null 2>&1; then ready=true; break; fi
+    # pg_isready can succeed against the temporary bootstrap server before the
+    # requested DB exists. Require an authenticated query on the final TCP server.
+    if docker exec -e "PGPASSWORD=$password" "$name" psql -h 127.0.0.1 \
+        -U rehearsal_user -d salonops_rehearsal -v ON_ERROR_STOP=1 -tAc 'SELECT 1' > /dev/null 2>&1; then ready=true; break; fi
     sleep 1
 done
 [[ "$ready" == true ]] || { echo "Isolated PostgreSQL did not become ready." >&2; exit 1; }
