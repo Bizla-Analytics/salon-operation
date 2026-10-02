@@ -1,7 +1,10 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from . import workbook_views
 urlpatterns=[
+path('admin-panel/import/workbook/', workbook_views.workbook_import, name='workbook_import'),
+path('admin-panel/import/workbook/<uuid:import_id>/snapshot/', workbook_views.workbook_snapshot, name='workbook_snapshot'),
 path('visits/<int:visit_id>/', views.visit_detail, name='visit_detail'),
 path('profile/', views.my_profile, name='my_profile'),
 path('manager/staff/', views.manager_staff, name='manager_staff'),

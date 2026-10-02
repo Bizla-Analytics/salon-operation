@@ -29,7 +29,7 @@
         <a href="{% url 'service_catalog' %}">{% include 'includes/nav_icon.html' with icon='catalogue' only %}<span>Service catalogue</span></a>
         <a href="{% url 'create_user' %}">{% include 'includes/nav_icon.html' with icon='user-add' only %}<span>Add team member</span></a>
         <a href="{% url 'branch_roster' %}">{% include 'includes/nav_icon.html' with icon='calendar' only %}<span>Branch roster</span></a>
-        <a href="{% url 'csv_import' %}">{% include 'includes/nav_icon.html' with icon='upload' only %}<span>Import data</span></a>
+        <a href="{% url 'workbook_import' %}">{% include 'includes/nav_icon.html' with icon='upload' only %}<span>Import SOP workbook</span></a>
         {% if can_manage_records %}<a href="/admin/">{% include 'includes/nav_icon.html' with icon='settings' only %}<span>Manage records</span></a>{% endif %}
       {% elif user.profile.role == 'GENERAL_MANAGER' %}
         <p>General management</p>

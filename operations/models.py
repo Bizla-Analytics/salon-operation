@@ -39,6 +39,29 @@ class Profile(TimeStamped):
         return f"{self.user.username} ({self.role})"
 
 
+class SOPWorkbookImport(models.Model):
+    """Private, short-lived staging plus an audit/master-data recovery snapshot."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="sop_imports")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    filename = models.CharField(max_length=160)
+    sha256 = models.CharField(max_length=64)
+    workbook = models.BinaryField(default=bytes, editable=False)
+    master_digest = models.CharField(max_length=64)
+    summary = models.CharField(max_length=2000)
+    status = models.CharField(max_length=12, default="PENDING", choices=[
+        ("PENDING", "Awaiting confirmation"), ("APPLIED", "Imported"),
+        ("EXPIRED", "Expired"), ("CANCELLED", "Cancelled"),
+    ])
+    applied_at = models.DateTimeField(null=True, blank=True)
+    master_snapshot = models.BinaryField(default=bytes, editable=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class BranchDuty(TimeStamped):
     """One person's effective workplace for one local calendar day.
 

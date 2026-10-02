@@ -130,6 +130,10 @@ it; `docker compose down -v` permanently removes it.
 
 ## SOP workbook import
 
+For remote servers without SSH access, administrators can [upload, validate and
+confirm a workbook in the website](docs/workbook-web-import.md) through **Import
+SOP workbook**. Deploying code never automatically imports a workbook.
+
 Business workbooks stay in the ignored `data/` directory and are never copied
 into the Docker image. To import or update the master data:
 

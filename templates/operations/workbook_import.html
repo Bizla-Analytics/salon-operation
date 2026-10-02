@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Import SOP workbook · Hairship{% endblock %}
+{% block content %}
+<div class="workbook-page">
+<header class="page-head split">
+  <div><span class="eyebrow">Administration · SOP setup</span><h1>Import SOP workbook</h1><p>Upload, validate and confirm. No server login is needed.</p></div>
+  <a class="button" href="{% url 'service_catalog' %}">Service catalogue</a>
+</header>
+<div class="notice info">This updates global services, sub-services, tasks, inventory, equipment and their mappings. It does not create staff, branches, customers or visits. Existing visit task snapshots are preserved. Rows absent from the workbook are not deleted.</div>
+<section class="panel narrow">
+  <h2 class="section-title">1. Upload and validate</h2>
+  <p>Choose your approved .xlsx workbook (maximum 10 MB and 10,000 rows). Validation saves no master-data changes.</p>
+  <p class="muted">Need branches, chairs or legacy data? <a href="{% url 'csv_import' %}">Use CSV import</a>.</p>
+  <form method="post" enctype="multipart/form-data" class="form-grid">
+    {% csrf_token %}<input type="hidden" name="action" value="validate">
+    {{ form.as_p }}
+    <button class="button primary" type="submit">Validate workbook</button>
+  </form>
+</section>
+{% if stage %}
+<section class="panel narrow" style="margin-top:16px">
+  <h2 class="section-title">2. Review and confirm</h2>
+  <p><strong>{{ stage.filename }}</strong> · {{ stage.get_status_display }}</p>
+  <p class="muted">Preview expires {{ stage.expires_at|date:'d M Y, H:i' }}. Counts below are the total records after import, not the number of new rows.</p>
+  <p class="workbook-summary">{{ stage.summary }}</p>
+  {% if stage.status == 'PENDING' %}
+  <p>A pre-import master-data snapshot is saved with the import and can be downloaded below. This is not a full database or off-server backup.</p>
+  <form method="post" class="form-grid">
+    {% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="stage" value="{{ stage.pk }}">
+    {{ confirm_form.as_p }}
+    <button class="button primary" type="submit">Confirm import</button>
+  </form>
+  <form method="post" style="margin-top:12px">
+    {% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="stage" value="{{ stage.pk }}">
+    <button class="button" type="submit">Discard workbook</button>
+  </form>
+  {% else %}<p>This preview is no longer available. Upload again if needed.</p>{% endif %}
+</section>
+{% endif %}
+<section class="panel" style="margin-top:16px">
+  <h2 class="section-title">Your recent imports</h2>
+  <div class="report-table-wrap"><table class="report-table">
+    <thead><tr><th>Workbook</th><th>Uploaded</th><th>Status</th><th>Recovery snapshot</th></tr></thead>
+    <tbody>{% for entry in history %}<tr>
+      <td>{{ entry.filename }}</td><td>{{ entry.created_at|date:'d M Y, H:i' }}</td><td>{{ entry.get_status_display }}</td>
+      <td>{% if entry.status == 'APPLIED' %}<a class="button" href="{% url 'workbook_snapshot' entry.pk %}">Download master snapshot</a>{% else %}—{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="4">No workbook imports yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="muted">Uploaded workbooks are private, temporary staging data—not public files. Confirmed or discarded uploads are removed; expired uploads are cleared when this page is used.</p>
+</section>
+</div>
+{% endblock %}

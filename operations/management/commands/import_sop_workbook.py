@@ -18,8 +18,9 @@ from operations.models import (
 
 
 def rows(sheet):
+    sheet.reset_dimensions()
     values = sheet.iter_rows(values_only=True)
-    headers = [str(value).strip() if value is not None else "" for value in next(values)]
+    headers = [str(value).strip() if value is not None else "" for value in next(values, ())]
     for row in values:
         record = dict(zip(headers, row))
         if any(value not in (None, "") for value in record.values()):
@@ -66,6 +67,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("workbook", nargs="?", default="data/Service_Operation_SOP_Upload_Workbook.xlsx")
         parser.add_argument("--dry-run", action="store_true", help="Validate the import transaction, then roll it back.")
+        parser.add_argument("--validate-workflow", action="store_true", help="Require active sanitisation and consultation tasks.")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -73,6 +75,12 @@ class Command(BaseCommand):
         if not path.exists():
             raise CommandError(f"Workbook not found: {path}")
         book = load_workbook(path, read_only=True, data_only=True)
+        try:
+            self.import_book(book, options)
+        finally:
+            book.close()
+
+    def import_book(self, book, options):
         required = {
             "Service Master", "Service Detail", "Sub-Service Master", "Task Master",
             "Task Inventory", "Task Equipment", "Inventory Master", "Equipment Master",
@@ -219,8 +227,11 @@ class Command(BaseCommand):
             )
         counts["equipment mappings"] = TaskEquipment.objects.count()
 
+        if options["validate_workflow"]:
+            for code in ("SUB025", "SUB001"):
+                if not SubService.objects.filter(code=code, active=True, tasks__active=True).exists():
+                    raise CommandError(f"Workflow requires {code} to have at least one active task.")
         summary = ", ".join(f"{name}: {count}" for name, count in counts.items())
-        book.close()
         if options["dry_run"]:
             transaction.set_rollback(True)
             self.stdout.write(self.style.SUCCESS(f"Dry run successful; no changes saved — {summary}"))
