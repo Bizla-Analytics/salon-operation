@@ -4,6 +4,9 @@ from django.contrib import messages
 from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.contrib.admin.models import CHANGE, LogEntry
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import connection, IntegrityError, transaction
 from django.db.models import Avg, Count, Exists, OuterRef, Prefetch, Q, Sum
@@ -11,11 +14,13 @@ from django.shortcuts import render,redirect,get_object_or_404
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.debug import sensitive_post_parameters
 from .models import *
 from .forms import *
 from .timing import add_timing_summary, adopt_legacy_active_segment, close_segment, start_segment
 from .decorators import roles_required
 from .roster import employee_services, working_branch
+from .staff_access import resettable_employees
 from .workflow import (
     CONSULTATION_CODE,
     OPENING_TASK_TYPES,
@@ -59,31 +64,94 @@ def my_profile(request):
 @require_GET
 def manager_staff(request):
     branch = user_branch(request.user)
+    return _staff_directory(request, branch=branch)
+
+
+@roles_required('GENERAL_MANAGER')
+@require_GET
+def general_manager_staff(request):
+    return _staff_directory(request, business_wide=True)
+
+
+def _staff_directory(request, branch=None, business_wide=False):
     today = timezone.localdate()
-    duties = BranchDuty.objects.filter(date=today)
-    staff = User.objects.filter(profile__role='EMPLOYEE').filter(
-        Q(profile__branch=branch)
-        | Q(pk__in=duties.filter(status='WORK', branch=branch).values('user_id'))
-    ).select_related('profile').prefetch_related(
-        Prefetch('branch_duties', queryset=duties, to_attr='today_duties'),
-    ).annotate(
-        open_services=Count('assigned_services', filter=Q(
+    duties = BranchDuty.objects.filter(date=today).select_related('branch')
+    if business_wide:
+        staff = User.objects.filter(profile__role__in=['EMPLOYEE', 'MANAGER', 'GENERAL_MANAGER'])
+        open_filter = Q(assigned_services__status__in=['ASSIGNED', 'IN_PROGRESS', 'PAUSED'])
+    else:
+        staff = User.objects.filter(profile__role='EMPLOYEE').filter(
+            Q(profile__branch=branch)
+            | Q(pk__in=duties.filter(status='WORK', branch=branch).values('user_id'))
+        ) if branch else User.objects.none()
+        open_filter = Q(
             assigned_services__visit__branch=branch,
             assigned_services__status__in=['ASSIGNED', 'IN_PROGRESS', 'PAUSED'],
-        )),
-    ).order_by('first_name', 'last_name', 'username') if branch else User.objects.none()
+        )
+    query = request.GET.get('q', '').strip()[:120]
+    if query:
+        staff = staff.filter(
+            Q(username__icontains=query) | Q(first_name__icontains=query)
+            | Q(last_name__icontains=query) | Q(profile__employee_code__icontains=query)
+            | Q(profile__branch__name__icontains=query)
+        )
+    staff = staff.select_related('profile', 'profile__branch').prefetch_related(
+        Prefetch('branch_duties', queryset=duties, to_attr='today_duties'),
+    ).annotate(
+        open_services=Count('assigned_services', filter=open_filter),
+        can_reset_password=Exists(resettable_employees(request.user).filter(pk=OuterRef('pk'))),
+    ).order_by('first_name', 'last_name', 'username')
+    page_obj = Paginator(staff, 24).get_page(request.GET.get('page'))
+    staff = list(page_obj.object_list)
     for person in staff:
         duty = person.today_duties[0] if person.today_duties else None
+        person.current_branch = duty.branch if duty and duty.status == 'WORK' else (
+            person.profile.branch if not duty and person.profile.role != 'GENERAL_MANAGER' else None
+        )
         if not person.is_active or not person.profile.active:
             person.duty_label = 'Inactive'
         elif duty and duty.status == 'LEAVE':
             person.duty_label = 'On leave'
-        elif duty and duty.branch_id != branch.pk:
+        elif not business_wide and duty and duty.branch_id != branch.pk:
             person.duty_label = 'Working at another branch'
+        elif person.current_branch is None:
+            person.duty_label = 'Not rostered today'
         else:
             person.duty_label = 'Working today'
     return render(request, 'operations/manager_staff.html', {
         'staff': staff, 'branch': branch, 'today': today,
+        'business_wide': business_wide, 'page_obj': page_obj, 'query': query,
+    })
+
+
+@roles_required('MANAGER', 'GENERAL_MANAGER')
+@require_http_methods(['GET', 'POST'])
+@sensitive_post_parameters()
+def staff_password_reset(request, user_id):
+    if request.user.profile.role == 'MANAGER' and not user_branch(request.user):
+        raise PermissionDenied
+    return_to = 'general_manager_staff' if request.user.profile.role == 'GENERAL_MANAGER' else 'manager_staff'
+    with transaction.atomic():
+        # A fresh scoped lookup on both GET and POST prevents URL/hidden-field tampering.
+        employee = get_object_or_404(
+            resettable_employees(request.user).select_for_update(of=('self',)).select_related('profile'),
+            pk=user_id,
+        )
+        form = StaffPasswordResetForm(
+            employee, request.POST if request.method == 'POST' else None, actor=request.user,
+        )
+        if request.method == 'POST' and form.is_valid():
+            form.save(commit=False)
+            employee.save(update_fields=['password'])
+            LogEntry.objects.create(
+                user=request.user, content_type=ContentType.objects.get_for_model(User),
+                object_id=str(employee.pk), object_repr=employee.username[:200],
+                action_flag=CHANGE, change_message='Employee password reset through staff management.',
+            )
+            messages.success(request, 'Password reset. Share the new password privately and ask the employee to change it in My profile.')
+            return redirect(return_to)
+    return render(request, 'operations/staff_password_reset.html', {
+        'employee': employee, 'form': form, 'return_to': return_to,
     })
 
 def health(request):

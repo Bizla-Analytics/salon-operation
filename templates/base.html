@@ -34,6 +34,7 @@
       {% elif user.profile.role == 'GENERAL_MANAGER' %}
         <p>General management</p>
         <a href="{% url 'branch_roster' %}">{% include 'includes/nav_icon.html' with icon='calendar' only %}<span>Branch roster</span></a>
+        <a href="{% url 'general_manager_staff' %}">{% include 'includes/nav_icon.html' with icon='staff' only %}<span>All staff</span></a>
         <a href="{% url 'admin_visits' %}">{% include 'includes/nav_icon.html' with icon='visits' only %}<span>All visits</span></a>
         <a href="{% url 'admin_reports' %}">{% include 'includes/nav_icon.html' with icon='reports' only %}<span>Reports</span></a>
         <a href="{% url 'service_catalog' %}">{% include 'includes/nav_icon.html' with icon='catalogue' only %}<span>Service catalogue</span></a>
@@ -41,7 +42,7 @@
         {% if acting_branch %}
           <a href="{% url 'manager_dashboard' %}">{% include 'includes/nav_icon.html' with icon='activity' only %}<span>Live operations · {{ acting_branch.name }}</span></a>
           <a href="{% url 'new_visit' %}">{% include 'includes/nav_icon.html' with icon='new' only %}<span>New service order</span></a>
-          <a href="{% url 'manager_staff' %}">{% include 'includes/nav_icon.html' with icon='staff' only %}<span>All staff</span></a>
+          <a href="{% url 'manager_staff' %}">{% include 'includes/nav_icon.html' with icon='staff' only %}<span>Today's branch staff</span></a>
         {% else %}
           <span class="sidebar-note">No branch assigned today</span>
         {% endif %}

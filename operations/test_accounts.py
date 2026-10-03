@@ -1,9 +1,12 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
+from django.contrib.admin.models import CHANGE, LogEntry
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Branch, BranchDuty
+from .models import Branch, BranchDuty, Customer, Service, Visit, VisitService, VisitTask
 
 
 @override_settings(STORAGES={'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
@@ -127,7 +130,7 @@ class ManagerStaffTests(TestCase):
         self.duty(self.visitor, self.a)
 
     def person(self, username, role, branch):
-        user = User.objects.create_user(username)
+        user = User.objects.create_user(username, password='Account-test-pass!41')
         user.profile.role = role
         user.profile.branch = branch
         user.profile.save()
@@ -179,3 +182,194 @@ class ManagerStaffTests(TestCase):
         duty.branch = None
         duty.save()
         self.assertEqual(self.client.get(reverse('manager_staff')).status_code, 403)
+
+    def reset_url(self, user):
+        return reverse('staff_password_reset', args=[user.pk])
+
+    def reset_data(self, **changes):
+        data = dict(actor_password='Account-test-pass!41',
+                    new_password1='Recovered-staff-pass!82', new_password2='Recovered-staff-pass!82')
+        data.update(changes)
+        return data
+
+    def test_general_manager_directory_shows_all_branches_without_acting_duty(self):
+        self.client.force_login(self.gm)
+        response = self.client.get(reverse('general_manager_staff'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({p.pk for p in response.context['staff']}, {
+            self.manager.pk, self.gm.pk, self.local.pk, self.away.pk,
+            self.leave.pk, self.visitor.pk, self.foreign.pk,
+        })
+        self.assertContains(response, 'Home branch')
+        self.assertContains(response, 'Working branch today')
+        self.assertContains(response, 'Branch A')
+        self.assertContains(response, 'Branch B')
+        self.assertContains(response, 'On leave')
+        self.assertContains(response, 'Not rostered today')
+        self.assertContains(response, f'href="{reverse("general_manager_staff")}"')
+        self.duty(self.gm, self.a)
+        response = self.client.get(reverse('general_manager_staff'))
+        self.assertIn(self.foreign.pk, {p.pk for p in response.context['staff']})
+        self.assertEqual(self.client.post(reverse('general_manager_staff'), {}).status_code, 405)
+
+    def test_directory_search_pagination_and_role_guards(self):
+        self.client.force_login(self.gm)
+        response = self.client.get(reverse('general_manager_staff'), {'q': 'foreign'})
+        self.assertEqual([p.pk for p in response.context['staff']], [self.foreign.pk])
+        for i in range(26):
+            self.person('extra_%02d' % i, 'EMPLOYEE', self.b)
+        response = self.client.get(reverse('general_manager_staff'))
+        self.assertEqual(len(response.context['staff']), 24)
+        self.assertContains(response, 'Next')
+        response = self.client.get(reverse('general_manager_staff'), {'page': 2})
+        self.assertEqual(len(response.context['staff']), 9)
+        for user in [self.manager, self.local]:
+            self.client.force_login(user)
+            self.assertEqual(self.client.get(reverse('general_manager_staff')).status_code, 403)
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('general_manager_staff')).status_code, 302)
+
+    def test_manager_resets_employee_password_only_and_invalidates_employee_session(self):
+        employee_client = Client()
+        employee_client.force_login(self.local)
+        self.client.force_login(self.manager)
+        response = self.client.get(self.reset_url(self.local))
+        self.assertContains(response, 'Your current password')
+        self.assertContains(response, 'Back to staff')
+        self.assertFalse(LogEntry.objects.exists())
+        response = self.client.post(self.reset_url(self.local), self.reset_data(
+            role='ADMIN', is_staff='true', user_id=self.foreign.pk,
+        ))
+        self.assertRedirects(response, reverse('manager_staff'))
+        self.local.refresh_from_db()
+        self.assertTrue(self.local.check_password('Recovered-staff-pass!82'))
+        self.assertEqual(self.local.profile.branch, self.a)
+        self.assertEqual(self.local.profile.role, 'EMPLOYEE')
+        self.assertFalse(self.local.is_staff)
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.manager.pk)
+        self.assertEqual(employee_client.get(reverse('my_profile')).status_code, 302)
+        self.assertFalse(Client().login(username='local', password='Account-test-pass!41'))
+        self.assertTrue(Client().login(username='local', password='Recovered-staff-pass!82'))
+        entry = LogEntry.objects.get()
+        self.assertEqual(entry.user, self.manager)
+        self.assertEqual(entry.object_id, str(self.local.pk))
+        self.assertEqual(entry.action_flag, CHANGE)
+        self.assertNotIn('pass!', entry.change_message)
+
+    def test_manager_password_reset_follows_employee_cover_not_home_membership(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('manager_staff'))
+        by_id = {p.pk: p for p in response.context['staff']}
+        self.assertTrue(by_id[self.local.pk].can_reset_password)
+        self.assertTrue(by_id[self.visitor.pk].can_reset_password)
+        self.assertFalse(by_id[self.away.pk].can_reset_password)
+        self.assertFalse(by_id[self.leave.pk].can_reset_password)
+        self.assertEqual(self.client.get(self.reset_url(self.visitor)).status_code, 200)
+        for target in [self.away, self.leave, self.foreign]:
+            self.assertEqual(self.client.get(self.reset_url(target)).status_code, 404)
+            self.assertEqual(self.client.post(self.reset_url(target), self.reset_data()).status_code, 404)
+            target.refresh_from_db()
+            self.assertTrue(target.check_password('Account-test-pass!41'))
+        self.assertFalse(LogEntry.objects.exists())
+
+    def test_general_manager_can_reset_employee_on_any_branch_or_leave_not_managers(self):
+        self.client.force_login(self.gm)
+        for target in [self.foreign, self.leave]:
+            response = self.client.post(self.reset_url(target), self.reset_data())
+            self.assertRedirects(response, reverse('general_manager_staff'))
+            target.refresh_from_db()
+            self.assertTrue(target.check_password('Recovered-staff-pass!82'))
+        for target in [self.manager, self.gm, self.person('admin', 'ADMIN', self.a)]:
+            self.assertEqual(self.client.post(self.reset_url(target), self.reset_data()).status_code, 404)
+        self.assertEqual(LogEntry.objects.count(), 2)
+
+    def test_reset_rechecks_duty_at_submission_and_manager_leave_blocks_recovery(self):
+        self.client.force_login(self.manager)
+        self.assertEqual(self.client.get(self.reset_url(self.local)).status_code, 200)
+        duty = self.duty(self.manager, self.b)
+        self.assertEqual(self.client.post(self.reset_url(self.local), self.reset_data()).status_code, 404)
+        self.assertEqual(self.client.get(self.reset_url(self.foreign)).status_code, 200)
+        duty.status, duty.branch = 'LEAVE', None
+        duty.save()
+        self.assertEqual(self.client.post(self.reset_url(self.foreign), self.reset_data()).status_code, 403)
+        self.assertFalse(LogEntry.objects.exists())
+
+    def test_reset_password_validation_reauthentication_and_csrf(self):
+        self.client.force_login(self.manager)
+        for data in [self.reset_data(actor_password='wrong'),
+                     self.reset_data(new_password2='different'),
+                     self.reset_data(new_password1='short', new_password2='short'),
+                     self.reset_data(new_password1='1234567890', new_password2='1234567890'),
+                     self.reset_data(new_password1='Account-test-pass!41', new_password2='Account-test-pass!41')]:
+            response = self.client.post(self.reset_url(self.local), data)
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.context['form'].errors)
+            self.assertNotContains(response, 'value="Account-test-pass!41"')
+            self.local.refresh_from_db()
+            self.assertTrue(self.local.check_password('Account-test-pass!41'))
+        self.assertFalse(LogEntry.objects.exists())
+        protected = Client(enforce_csrf_checks=True)
+        protected.force_login(self.manager)
+        self.assertEqual(protected.post(self.reset_url(self.local), self.reset_data()).status_code, 403)
+
+    def test_reset_denies_inactive_and_privileged_targets_and_non_manager_actors(self):
+        self.client.force_login(self.gm)
+        self.foreign.is_staff = True
+        self.foreign.save()
+        self.local.profile.active = False
+        self.local.profile.save()
+        self.away.is_active = False
+        self.away.save()
+        superuser = User.objects.create_superuser('root_account', '', 'Root-test-pass!41')
+        for target in [self.foreign, self.local, self.away, superuser]:
+            self.assertEqual(self.client.post(self.reset_url(target), self.reset_data()).status_code, 404)
+        self.gm.profile.active = False
+        self.gm.profile.save()
+        self.assertEqual(self.client.get(reverse('general_manager_staff')).status_code, 403)
+        self.assertEqual(self.client.post(self.reset_url(self.visitor), self.reset_data()).status_code, 403)
+        self.client.force_login(self.visitor)
+        self.assertEqual(self.client.post(self.reset_url(self.leave), self.reset_data()).status_code, 403)
+        self.client.logout()
+        self.assertEqual(self.client.post(self.reset_url(self.leave), self.reset_data()).status_code, 302)
+        self.assertFalse(LogEntry.objects.exists())
+
+    def test_cover_staff_reset_preserves_roster_assignments_and_completed_snapshots(self):
+        visit = Visit.objects.create(
+            branch=self.a, customer=Customer.objects.create(name='Recovery test customer'),
+            created_by=self.manager,
+        )
+        assigned = VisitService.objects.create(
+            visit=visit, service=Service.objects.create(code='RECOVERY', name='Recovery test service'),
+            employee=self.visitor, assigned_by=self.manager,
+        )
+        VisitTask.objects.create(
+            visit_service=assigned, sequence=1, title='Completed snapshot',
+            phase='DURING', task_type='SERVICE', status='COMPLETED',
+            performed_by=self.visitor, completed_at=timezone.now(),
+        )
+        before = {
+            'duties': list(BranchDuty.objects.values()),
+            'visits': list(Visit.objects.values()),
+            'services': list(VisitService.objects.values()),
+            'tasks': list(VisitTask.objects.values()),
+        }
+        self.client.force_login(self.manager)
+        response = self.client.post(self.reset_url(self.visitor), self.reset_data())
+        self.assertRedirects(response, reverse('manager_staff'))
+        self.visitor.refresh_from_db()
+        self.assertTrue(self.visitor.check_password('Recovered-staff-pass!82'))
+        self.assertEqual(before, {
+            'duties': list(BranchDuty.objects.values()),
+            'visits': list(Visit.objects.values()),
+            'services': list(VisitService.objects.values()),
+            'tasks': list(VisitTask.objects.values()),
+        })
+
+    def test_failed_audit_rolls_back_password_reset(self):
+        self.client.force_login(self.manager)
+        with patch('operations.views.LogEntry.objects.create', side_effect=RuntimeError('Audit unavailable')):
+            with self.assertRaises(RuntimeError):
+                self.client.post(self.reset_url(self.local), self.reset_data())
+        self.local.refresh_from_db()
+        self.assertTrue(self.local.check_password('Account-test-pass!41'))
+        self.assertFalse(LogEntry.objects.exists())

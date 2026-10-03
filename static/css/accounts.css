@@ -46,6 +46,17 @@
 .profile-facts dt{font-size:.78rem;color:var(--muted);margin-bottom:5px}
 .profile-facts dd{margin:0;overflow-wrap:anywhere}
 .staff-grid .empty-state{grid-column:1/-1}
+.staff-directory-tools{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.staff-directory-tools>div{flex:1 1 260px;min-width:0}
+.staff-directory-tools label{display:block;font-size:.8rem;margin-bottom:6px}
+.staff-directory-tools input{width:100%;min-width:0;min-height:44px}
+.staff-directory-tools .button,.staff-card-actions .button{min-height:44px;font-size:.83rem}
+.staff-directory-count{font-size:.8rem;margin:10px 0 14px}
+.staff-card-actions{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.staff-pagination{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px;margin-top:20px}
+.staff-reset-page{max-width:760px;margin:0 auto}
+.staff-reset-actions{display:flex;flex-wrap:wrap;gap:10px}
+.staff-reset-actions .button{flex:1 1 180px;text-align:center}
 @media(max-width:750px){.profile-grid,.staff-grid{grid-template-columns:1fr}.profile-facts{gap:16px}.topbar{padding:0 14px}.topbar .brand strong{font-size:1rem}}
 
 /* Dense manager overview: no extra detail button or full-height action footer. */

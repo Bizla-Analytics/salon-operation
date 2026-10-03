@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
-from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.forms import BaseInlineFormSet, inlineformset_factory
 from django.db.models import Q
 from datetime import timedelta
@@ -51,6 +51,31 @@ class SelfDetailsForm(BootstrapMixin, forms.ModelForm):
 
 class SelfPasswordChangeForm(BootstrapMixin, PasswordChangeForm):
     pass
+
+
+class StaffPasswordResetForm(BootstrapMixin, SetPasswordForm):
+    actor_password = forms.CharField(
+        label='Your current password', strip=False,
+        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}),
+        help_text='Confirm your own password to authorize this reset.',
+    )
+
+    def __init__(self, user, *args, actor, **kwargs):
+        self.actor = actor
+        super().__init__(user, *args, **kwargs)
+        self.order_fields(['actor_password', 'new_password1', 'new_password2'])
+
+    def clean_actor_password(self):
+        password = self.cleaned_data['actor_password']
+        if not self.actor.check_password(password):
+            raise forms.ValidationError('Your current password is incorrect.')
+        return password
+
+    def clean_new_password1(self):
+        password = self.cleaned_data['new_password1']
+        if self.user.check_password(password):
+            raise forms.ValidationError('Choose a password different from the employee\'s current password.')
+        return password
 
 
 class VisitCreateForm(BootstrapMixin, forms.Form):

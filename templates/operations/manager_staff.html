@@ -1,7 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}All staff · Hairship{% endblock %}
 {% block content %}
-<header class="page-head staff-page-head"><span class="eyebrow">{{ branch.name|default:'Branch operations' }}</span><h1>All staff</h1><p>Your branch team and staff covering here today · {{ today|date:'d M Y' }}.</p></header>
+<header class="page-head staff-page-head"><span class="eyebrow">{% if business_wide %}General management{% else %}{{ branch.name|default:'Branch operations' }}{% endif %}</span><h1>All staff</h1><p>{% if business_wide %}Employees and managers across all branches{% else %}Your branch team and staff covering here today{% endif %} · {{ today|date:'d M Y' }}.</p></header>
+<form method="get" class="staff-directory-tools">
+  <div><label for="staff-search">Search staff</label><input class="form-control" id="staff-search" name="q" value="{{ query }}" maxlength="120" placeholder="Name, username, staff code or home branch"></div>
+  <button class="button outline" type="submit">Search</button>
+  {% if query %}<a class="button outline" href="{% if business_wide %}{% url 'general_manager_staff' %}{% else %}{% url 'manager_staff' %}{% endif %}">Clear</a>{% endif %}
+</form>
+<p class="muted staff-directory-count">{{ page_obj.paginator.count }} staff member{{ page_obj.paginator.count|pluralize }}{% if query %} found{% endif %}.</p>
 <div class="staff-grid">
   {% for person in staff %}
   <article class="panel staff-card">
@@ -11,9 +17,20 @@
       <div><dt>Username</dt><dd>{{ person.username }}</dd></div>
       <div><dt>Email</dt><dd>{{ person.email|default:'Not provided' }}</dd></div>
       <div><dt>Mobile</dt><dd>{{ person.profile.mobile|default:'Not provided' }}</dd></div>
-      <div><dt>Open services here</dt><dd>{{ person.open_services }}</dd></div>
+      {% if business_wide %}
+      <div><dt>Role</dt><dd>{{ person.profile.get_role_display }}</dd></div>
+      <div><dt>Home branch</dt><dd>{{ person.profile.branch.name|default:'Not assigned' }}</dd></div>
+      <div><dt>Working branch today</dt><dd>{{ person.current_branch.name|default:'Not assigned' }}</dd></div>
+      <div><dt>Open services</dt><dd>{{ person.open_services }}</dd></div>
+      {% else %}<div><dt>Open services here</dt><dd>{{ person.open_services }}</dd></div>{% endif %}
     </dl>
+    {% if person.can_reset_password %}<div class="staff-card-actions"><a class="button outline" href="{% url 'staff_password_reset' person.pk %}">Reset password</a></div>{% endif %}
   </article>
-  {% empty %}<div class="empty-state"><b>No staff found</b><span>No employees are assigned to this branch.</span></div>{% endfor %}
+  {% empty %}<div class="empty-state"><b>No staff found</b><span>{% if query %}Try a different search.{% elif business_wide %}No team members are registered.{% else %}No employees are assigned to this branch.{% endif %}</span></div>{% endfor %}
 </div>
+{% if page_obj.has_other_pages %}<nav class="staff-pagination" aria-label="Staff pages">
+  {% if page_obj.has_previous %}<a class="button outline" href="?q={{ query|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
+  <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="button outline" href="?q={{ query|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+</nav>{% endif %}
 {% endblock %}
