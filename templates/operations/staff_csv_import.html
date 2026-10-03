@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Upload staff CSV · Hairship{% endblock %}
+{% block content %}
+<div class="workflow-page staff-import-page">
+  <header class="page-head split"><div><span class="eyebrow">Team setup</span><h1>Upload staff CSV</h1><p>Validate first, review the team, then confirm account creation.</p></div><a class="button outline workflow-back" href="{% url return_to %}">Back to all staff</a></header>
+  <section class="panel">
+    <h2>1. Upload and validate</h2>
+    <p>Save your sheet as <strong>CSV UTF-8</strong> in Excel (up to 200 rows, 512 KB). Use these columns:</p>
+    <p class="staff-csv-columns"><code>BRANCH, NAME, PH.NO, SECTION, EXPERIENCE, SALARY</code></p>
+    <p class="muted">BRANCH must match an existing active branch name or code. Phone, experience and salary may be blank or <code>null</code>. A section starting with MANAGER creates a manager; other sections create employees. Salary is visible only to Admin and General Manager.</p>
+    <p class="muted">This creates new accounts only. Duplicate names in the same home branch are rejected; existing accounts, rosters and visit history are never overwritten. No administrator or general-manager accounts can be created here.</p>
+    <a class="button outline" href="{% url 'staff_csv_template' %}">Download CSV template</a>
+    <form method="post" enctype="multipart/form-data" class="form-grid staff-upload-form">{% csrf_token %}<input type="hidden" name="action" value="validate">{{ form.as_p }}<button class="button primary" type="submit">Validate CSV</button></form>
+  </section>
+  {% if stage %}
+  <section class="panel staff-import-preview">
+    <h2>2. Review and confirm</h2><p><strong>{{ stage.filename }}</strong> · {{ stage.get_status_display }} · {{ stage.row_count }} account{{ stage.row_count|pluralize }}</p>
+    {% if stage.status == 'PENDING' %}
+    <p class="muted">Preview expires {{ stage.expires_at|date:'d M Y, H:i' }}. Check the proposed roles carefully before confirming.</p>
+    <div class="report-table-wrap"><table class="report-table"><thead><tr><th>Row</th><th>Branch</th><th>Name</th><th>Phone</th><th>Section</th><th>Role</th><th>Experience</th><th>Salary</th><th>Username</th></tr></thead><tbody>
+      {% for row in stage.rows %}<tr><td>{{ row.line }}</td><td>{{ row.branch_name }}</td><td>{{ row.name }}</td><td>{{ row.mobile|default:'—' }}</td><td>{{ row.section }}</td><td>{{ row.role }}</td><td>{{ row.experience|default:'—' }}</td><td>{% if row.salary != None %}₹{{ row.salary }}{% else %}—{% endif %}</td><td>{{ row.username }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    <p><strong>Confirmation starts a private one-time credentials CSV download.</strong> It contains each new username and individual generated password. Save it securely and share only each person's own credentials, not the whole file. Plaintext passwords are not saved in the preview, database staging or server files.</p>
+    <form method="post" class="form-grid staff-import-confirm">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="stage" value="{{ stage.pk }}">{{ confirm_form.as_p }}<button class="button primary" type="submit">Create staff and download credentials</button></form>
+    <form method="post" class="staff-import-discard">{% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="stage" value="{{ stage.pk }}"><button class="button outline" type="submit">Discard preview</button></form>
+    {% elif stage.status == 'APPLIED' %}<p>The staff accounts were created. The credentials download is one-time; if it was lost, use employee password recovery, or administrator recovery for manager accounts.</p><a class="button primary" href="{% url return_to %}">View all staff</a>
+    {% else %}<p>This preview is no longer available. Validate a new CSV if needed.</p>{% endif %}
+  </section>
+  {% endif %}
+  <section class="panel staff-import-history"><h2>Your recent uploads</h2><div class="report-table-wrap"><table class="report-table"><thead><tr><th>File</th><th>Accounts</th><th>Status</th><th>Uploaded</th></tr></thead><tbody>{% for entry in history %}<tr><td><a href="?stage={{ entry.pk }}">{{ entry.filename }}</a></td><td>{{ entry.row_count }}</td><td>{{ entry.get_status_display }}</td><td>{{ entry.created_at|date:'d M Y, H:i' }}</td></tr>{% empty %}<tr><td colspan="4">No staff CSV uploads yet.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+{% endblock %}

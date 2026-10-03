@@ -15,6 +15,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.cache import never_cache
 from .models import *
 from .forms import *
 from .timing import add_timing_summary, adopt_legacy_active_segment, close_segment, start_segment
@@ -67,7 +68,8 @@ def manager_staff(request):
     return _staff_directory(request, branch=branch)
 
 
-@roles_required('GENERAL_MANAGER')
+@roles_required('ADMIN', 'GENERAL_MANAGER')
+@never_cache
 @require_GET
 def general_manager_staff(request):
     return _staff_directory(request, business_wide=True)
@@ -121,6 +123,9 @@ def _staff_directory(request, branch=None, business_wide=False):
     return render(request, 'operations/manager_staff.html', {
         'staff': staff, 'branch': branch, 'today': today,
         'business_wide': business_wide, 'page_obj': page_obj, 'query': query,
+        'can_import_staff': business_wide and (
+            request.user.is_superuser or request.user.profile.role in ['ADMIN', 'GENERAL_MANAGER']
+        ),
     })
 
 

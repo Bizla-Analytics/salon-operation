@@ -36,6 +36,16 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "role", "branch", "employee_code", "active")
     list_filter = ("role", "branch", "active")
 
+    def get_exclude(self, request, obj=None):
+        excluded = list(super().get_exclude(request, obj) or ())
+        profile = getattr(request.user, 'profile', None)
+        can_view_salary = request.user.is_superuser or (
+            profile and profile.active and profile.role in ['ADMIN', 'GENERAL_MANAGER']
+        )
+        if not can_view_salary:
+            excluded.append('salary')
+        return excluded
+
 
 @admin.register(BranchDuty)
 class BranchDutyAdmin(admin.ModelAdmin):

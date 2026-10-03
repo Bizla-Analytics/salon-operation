@@ -2,6 +2,7 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
 from . import workbook_views
+from . import staff_import_views
 urlpatterns=[
 path('admin-panel/import/workbook/', workbook_views.workbook_import, name='workbook_import'),
 path('admin-panel/import/workbook/<uuid:import_id>/snapshot/', workbook_views.workbook_snapshot, name='workbook_snapshot'),
@@ -9,6 +10,9 @@ path('visits/<int:visit_id>/', views.visit_detail, name='visit_detail'),
 path('profile/', views.my_profile, name='my_profile'),
 path('manager/staff/', views.manager_staff, name='manager_staff'),
 path('general-manager/staff/', views.general_manager_staff, name='general_manager_staff'),
+path('admin-panel/staff/', views.general_manager_staff, name='admin_staff'),
+path('staff/import/', staff_import_views.staff_csv_import, name='staff_csv_import'),
+path('staff/import/template/', staff_import_views.staff_csv_template, name='staff_csv_template'),
 path('staff/<int:user_id>/reset-password/', views.staff_password_reset, name='staff_password_reset'),
 path('health/',views.health,name='health'),path('login/',auth_views.LoginView.as_view(template_name='registration/login.html',redirect_authenticated_user=True,extra_context={'plain_layout':True}),name='login'),path('logout/',views.logout_view,name='logout'),path('',views.dashboard,name='dashboard'),
 path('admin-panel/',views.admin_dashboard,name='admin_dashboard'),path('admin-panel/reports/',views.admin_reports,name='admin_reports'),path('admin-panel/visits/',views.admin_visits,name='admin_visits'),path('admin-panel/users/add/',views.create_user,name='create_user'),path('admin-panel/roster/',views.branch_roster,name='branch_roster'),path('admin-panel/import/',views.csv_import,name='csv_import'),path('admin-panel/services/',views.service_catalog,name='service_catalog'),path('general-manager/',views.general_manager_dashboard,name='general_manager_dashboard'),

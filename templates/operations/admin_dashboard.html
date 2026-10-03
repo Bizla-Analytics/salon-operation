@@ -22,6 +22,7 @@
   <h2 class="section-title">Setup</h2>
   <div class="action-grid">
     <a class="action-card" href="{% url 'create_user' %}"><i>＋</i><strong>Add team member</strong><span>Create a general manager, manager, or employee account</span></a>
+    <a class="action-card" href="{% url 'admin_staff' %}">{% include 'includes/nav_icon.html' with icon='staff' only %}<strong>All staff</strong><span>See the team or upload staff from CSV</span></a>
     <a class="action-card" href="{% url 'branch_roster' %}"><i>▦</i><strong>Branch roster</strong><span>Plan manager and employee cover or leave</span></a>
     <a class="action-card" href="{% url 'workbook_import' %}"><i>{% include 'includes/nav_icon.html' with icon='upload' only %}</i><strong>Import SOP workbook</strong><span>Validate your workbook and confirm master-data updates</span></a>
     <a class="action-card" href="{% url 'csv_import' %}"><i>⇧</i><strong>Import CSV data</strong><span>Update branches, services, chairs and legacy SOP tasks</span></a>

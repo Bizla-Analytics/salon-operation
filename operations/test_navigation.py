@@ -66,7 +66,7 @@ class SidebarIconTests(TestCase):
 
     def test_all_existing_role_sidebars_use_consistent_decorative_svg_icons(self):
         for role, page, icons in [
-            ('ADMIN', 'admin_dashboard', ['home', 'visits', 'reports', 'catalogue', 'user-add', 'calendar', 'upload']),
+            ('ADMIN', 'admin_dashboard', ['home', 'visits', 'reports', 'catalogue', 'user-add', 'staff', 'calendar', 'upload']),
             ('GENERAL_MANAGER', 'general_manager_dashboard', ['home', 'calendar', 'staff', 'visits', 'reports', 'catalogue']),
             ('MANAGER', 'manager_dashboard', ['home', 'new', 'catalogue', 'staff']),
         ]:
@@ -83,7 +83,7 @@ class SidebarIconTests(TestCase):
     def test_superuser_records_icon_and_staff_minimal_navigation_are_preserved(self):
         admin = User.objects.create_superuser('icons_superuser', '', 'test')
         response = self.check_sidebar(admin, 'admin_dashboard',
-                                      ['home', 'visits', 'reports', 'catalogue', 'user-add', 'calendar', 'upload', 'settings'])
+                                      ['home', 'visits', 'reports', 'catalogue', 'user-add', 'staff', 'calendar', 'upload', 'settings'])
         self.assertContains(response, 'href="/admin/"')
         employee = self.person('EMPLOYEE')
         self.client.force_login(employee)

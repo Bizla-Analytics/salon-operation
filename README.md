@@ -204,6 +204,11 @@ Managers have an **All staff** sidebar link for their current branch's employees
 including home-branch staff on leave or working elsewhere and today's visiting
 cover staff. General managers can use it while rostered as acting branch manager.
 
+Admin and General Manager can onboard staff through **All staff → Upload staff
+CSV**, including experience and salary. Validate and review before confirming;
+each new account gets individual credentials in a one-time download. See the
+[staff CSV guide](docs/staff-csv-import.md) for the format and safeguards.
+
 The account-menu JavaScript unit tests can also be run with
 `node --test tests/accounts.test.cjs`.
 

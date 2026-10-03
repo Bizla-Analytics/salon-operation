@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 {% block title %}All staff · Hairship{% endblock %}
 {% block content %}
-<header class="page-head staff-page-head"><span class="eyebrow">{% if business_wide %}General management{% else %}{{ branch.name|default:'Branch operations' }}{% endif %}</span><h1>All staff</h1><p>{% if business_wide %}Employees and managers across all branches{% else %}Your branch team and staff covering here today{% endif %} · {{ today|date:'d M Y' }}.</p></header>
+<header class="page-head staff-page-head"><span class="eyebrow">{% if business_wide %}Team management{% else %}{{ branch.name|default:'Branch operations' }}{% endif %}</span><h1>All staff</h1><p>{% if business_wide %}Employees and managers across all branches{% else %}Your branch team and staff covering here today{% endif %} · {{ today|date:'d M Y' }}.</p>{% if can_import_staff %}<a class="button primary" href="{% url 'staff_csv_import' %}">{% include 'includes/nav_icon.html' with icon='upload' only %}Upload staff CSV</a>{% endif %}</header>
 <form method="get" class="staff-directory-tools">
   <div><label for="staff-search">Search staff</label><input class="form-control" id="staff-search" name="q" value="{{ query }}" maxlength="120" placeholder="Name, username, staff code or home branch"></div>
   <button class="button outline" type="submit">Search</button>
-  {% if query %}<a class="button outline" href="{% if business_wide %}{% url 'general_manager_staff' %}{% else %}{% url 'manager_staff' %}{% endif %}">Clear</a>{% endif %}
+  {% if query %}<a class="button outline" href="{{ request.path }}">Clear</a>{% endif %}
 </form>
 <p class="muted staff-directory-count">{{ page_obj.paginator.count }} staff member{{ page_obj.paginator.count|pluralize }}{% if query %} found{% endif %}.</p>
 <div class="staff-grid">
@@ -17,11 +17,13 @@
       <div><dt>Username</dt><dd>{{ person.username }}</dd></div>
       <div><dt>Email</dt><dd>{{ person.email|default:'Not provided' }}</dd></div>
       <div><dt>Mobile</dt><dd>{{ person.profile.mobile|default:'Not provided' }}</dd></div>
+      <div><dt>Experience</dt><dd>{{ person.profile.experience|default:'Not provided' }}</dd></div>
       {% if business_wide %}
       <div><dt>Role</dt><dd>{{ person.profile.get_role_display }}</dd></div>
       <div><dt>Home branch</dt><dd>{{ person.profile.branch.name|default:'Not assigned' }}</dd></div>
       <div><dt>Working branch today</dt><dd>{{ person.current_branch.name|default:'Not assigned' }}</dd></div>
       <div><dt>Open services</dt><dd>{{ person.open_services }}</dd></div>
+      <div><dt>Salary</dt><dd>{% if person.profile.salary != None %}₹{{ person.profile.salary|floatformat:2 }}{% else %}Not provided{% endif %}</dd></div>
       {% else %}<div><dt>Open services here</dt><dd>{{ person.open_services }}</dd></div>{% endif %}
     </dl>
     {% if person.can_reset_password %}<div class="staff-card-actions"><a class="button outline" href="{% url 'staff_password_reset' person.pk %}">Reset password</a></div>{% endif %}

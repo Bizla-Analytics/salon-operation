@@ -33,7 +33,16 @@ class Profile(TimeStamped):
     employee_code = models.CharField(max_length=30, blank=True)
     job_title = models.CharField(max_length=80, blank=True)
     mobile = models.CharField(max_length=30, blank=True)
+    experience = models.CharField(max_length=80, blank=True)
+    salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+                                 validators=[MinValueValidator(0)])
     active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(
+            condition=models.Q(salary__isnull=True) | models.Q(salary__gte=0),
+            name='nonnegative_staff_salary',
+        )]
 
     def __str__(self):
         return f"{self.user.username} ({self.role})"
@@ -60,6 +69,27 @@ class SOPWorkbookImport(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class StaffCSVImport(models.Model):
+    """Private, expiring account-creation preview; never stores plaintext passwords."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='staff_csv_imports')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    filename = models.CharField(max_length=160)
+    sha256 = models.CharField(max_length=64)
+    rows = models.JSONField(default=list, editable=False)
+    row_count = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=12, default='PENDING', choices=[
+        ('PENDING', 'Awaiting confirmation'), ('APPLIED', 'Imported'),
+        ('EXPIRED', 'Expired'), ('CANCELLED', 'Cancelled'),
+    ])
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class BranchDuty(TimeStamped):
