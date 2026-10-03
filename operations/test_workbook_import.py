@@ -284,5 +284,7 @@ class WorkbookImportTests(TestCase):
         self.assertEqual(self.client.post(self.url, {"action": "unknown"}).status_code, 400)
 
     def test_new_routes_visible_in_admin_ui(self):
-        self.assertContains(self.client.get(reverse("admin_dashboard")), self.url)
-        self.assertContains(self.client.get(reverse("csv_import")), "Excel SOP workbook")
+        self.assertContains(self.client.get(reverse("admin_dashboard")), reverse("import_data"))
+        self.assertContains(self.client.get(reverse("import_data")), self.url)
+        self.assertRedirects(self.client.get(reverse("csv_import")), reverse("import_data"))
+        self.assertContains(self.client.get(reverse("import_data")), "Excel SOP workbook")

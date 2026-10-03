@@ -92,6 +92,28 @@ class StaffCSVImport(models.Model):
         ordering = ['-created_at']
 
 
+class BranchCSVImport(models.Model):
+    """Owner-bound branch/chair preview, cleared when applied or discarded."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='branch_csv_imports')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    filename = models.CharField(max_length=160)
+    sha256 = models.CharField(max_length=64)
+    master_digest = models.CharField(max_length=64)
+    plan = models.JSONField(default=dict, editable=False)
+    summary = models.JSONField(default=dict, editable=False)
+    status = models.CharField(max_length=12, default='PENDING', choices=[
+        ('PENDING', 'Awaiting confirmation'), ('APPLIED', 'Imported'),
+        ('EXPIRED', 'Expired'), ('CANCELLED', 'Cancelled'),
+    ])
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
 class BranchDuty(TimeStamped):
     """One person's effective workplace for one local calendar day.
 

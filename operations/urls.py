@@ -3,7 +3,11 @@ from django.contrib.auth import views as auth_views
 from . import views
 from . import workbook_views
 from . import staff_import_views
+from . import import_views
 urlpatterns=[
+path('imports/', import_views.import_data, name='import_data'),
+path('imports/branches/', import_views.branch_csv_import, name='branch_csv_import'),
+path('imports/branches/template/', import_views.branch_csv_template, name='branch_csv_template'),
 path('admin-panel/import/workbook/', workbook_views.workbook_import, name='workbook_import'),
 path('admin-panel/import/workbook/<uuid:import_id>/snapshot/', workbook_views.workbook_snapshot, name='workbook_snapshot'),
 path('visits/<int:visit_id>/', views.visit_detail, name='visit_detail'),

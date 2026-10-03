@@ -209,6 +209,10 @@ CSV**, including experience and salary. Validate and review before confirming;
 each new account gets individual credentials in a one-time download. See the
 [staff CSV guide](docs/staff-csv-import.md) for the format and safeguards.
 
+The **Import data** sidebar section brings branch/chair CSV, staff CSV and SOP
+workbook imports together. See the [branch import guide](docs/branch-csv-import.md)
+for the downloadable CSV format, preview/confirmation steps and update rules.
+
 The account-menu JavaScript unit tests can also be run with
 `node --test tests/accounts.test.cjs`.
 

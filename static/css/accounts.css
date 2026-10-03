@@ -62,10 +62,22 @@
 .staff-import-page .staff-upload-form,.staff-import-page .staff-import-confirm{margin-top:18px}
 .staff-import-page .staff-import-discard{margin-top:12px}
 .staff-import-page .errorlist{white-space:pre-line}
+.staff-import-confirm .import-confirm-check{display:flex;align-items:flex-start;gap:10px}
+.staff-import-confirm .import-confirm-check input[type="checkbox"]{flex:0 0 20px;width:20px;height:20px;min-height:20px;margin:2px 0 0;padding:0;accent-color:var(--brand)}
+.staff-import-confirm .import-confirm-check label{margin:0;line-height:1.5}
 .staff-csv-columns{overflow-wrap:anywhere;font-size:.85rem}
 .staff-import-page .report-table-wrap{max-width:100%;overflow-x:auto}
 .staff-import-preview .report-table{min-width:900px}
 .staff-import-page .button{white-space:normal;text-align:center}
+.import-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.import-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-width:0}
+.import-card>.nav-icon{width:28px;height:28px;color:var(--brand)}
+.import-card h2{font-size:1.2rem;margin:0}.import-card p{margin:0;line-height:1.55}
+.import-card>.button,.import-card>.import-access-note{margin-top:auto;width:100%;text-align:center;white-space:normal}
+.import-access-note{background:var(--bg);border-radius:8px;padding:11px;color:var(--muted);font-size:.85rem}
+.branch-import-counts{background:var(--bg);border-radius:10px;padding:12px 16px}.branch-import-counts p{margin:4px 0}
+.branch-import-preview .report-table{min-width:720px}.branch-import-preview td{overflow-wrap:anywhere;white-space:normal}
+@media(max-width:900px){.import-card-grid{grid-template-columns:1fr}.import-card>.button{min-height:44px}}
 @media(max-width:750px){.profile-grid,.staff-grid{grid-template-columns:1fr}.profile-facts{gap:16px}.topbar{padding:0 14px}.topbar .brand strong{font-size:1rem}}
 
 /* Dense manager overview: no extra detail button or full-height action footer. */

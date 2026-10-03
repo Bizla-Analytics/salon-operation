@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Import data · Hairship{% endblock %}
+{% block content %}
+<div class="workflow-page import-data-page">
+  <header class="page-head"><span class="eyebrow">Data setup</span><h1>Import data</h1><p>Set up branches and chairs, onboard staff, and update SOPs from one place.</p></header>
+  <div class="notice info">For initial setup, import branches and chairs first, then staff. Every import is validated and reviewed before you confirm it. Existing visit task snapshots stay unchanged.</div>
+  <div class="import-card-grid">
+    <section class="panel import-card" id="branches">
+      {% include 'includes/nav_icon.html' with icon='branch' only %}<span class="eyebrow">1 · Branch setup</span><h2>Branches and chairs</h2>
+      <p>Import branch codes, names, locations, phone numbers and named chairs from CSV.</p><p class="muted">Stable codes update matching records. No branch or chair is deleted or moved.</p>
+      {% if can_import_master %}<a class="button primary" href="{% url 'branch_csv_import' %}">Import branches and chairs</a>{% else %}<p class="import-access-note">Administrator access required</p>{% endif %}
+    </section>
+    <section class="panel import-card" id="staff">
+      {% include 'includes/nav_icon.html' with icon='staff' only %}<span class="eyebrow">2 · Team setup</span><h2>Staff CSV</h2>
+      <p>Import staff names, home branches, phone numbers, sections, experience and salary.</p><p class="muted">Create new accounts and download individual login credentials once. Existing accounts are never overwritten.</p>
+      <a class="button primary" href="{% url 'staff_csv_import' %}">Upload staff CSV</a>
+    </section>
+    <section class="panel import-card" id="sop">
+      {% include 'includes/nav_icon.html' with icon='catalogue' only %}<span class="eyebrow">3 · Service setup</span><h2>Excel SOP workbook</h2>
+      <p>Update services, sub-services, tasks, inventory, equipment and SOP mappings from an approved workbook.</p><p class="muted">Master-data changes apply to future task snapshots, not work already performed.</p>
+      {% if can_import_master %}<a class="button primary" href="{% url 'workbook_import' %}">Import SOP workbook</a>{% else %}<p class="import-access-note">Administrator access required</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

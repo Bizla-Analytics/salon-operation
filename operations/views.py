@@ -1,4 +1,3 @@
-import csv, io
 from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import logout, update_session_auth_hash
@@ -11,7 +10,7 @@ from django.core.paginator import Paginator
 from django.db import connection, IntegrityError, transaction
 from django.db.models import Avg, Count, Exists, OuterRef, Prefetch, Q, Sum
 from django.shortcuts import render,redirect,get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.decorators.debug import sensitive_post_parameters
@@ -451,26 +450,14 @@ def branch_roster(request):
         'form': form, 'duties': duties, 'today': today,
     })
 
-CSV_MODELS={'branches':(Branch,['code','name','address','phone','active']), 'services':(Service,['code','name','category','standard_duration_minutes','base_price','active']), 'chairs':(Chair,['branch','code','name','active']), 'sop_tasks':(SOPTask,['service','sequence','phase','task_type','title','instructions','required','can_skip','skip_reason_required','quick_action','active'])}
 @roles_required('ADMIN')
+@require_http_methods(['GET', 'POST'])
 def csv_import(request):
-    result=[]
-    if request.method=='POST' and request.FILES.get('csv_file'):
-        kind=request.POST.get('kind'); model,fields=CSV_MODELS[kind]
-        text=request.FILES['csv_file'].read().decode('utf-8-sig'); reader=csv.DictReader(io.StringIO(text))
-        for n,row in enumerate(reader,2):
-            try:
-                data={}
-                for f in fields:
-                    v=(row.get(f) or '').strip()
-                    if f in ['active','required','can_skip','skip_reason_required','quick_action']: v=v.lower() in ('1','true','yes','y')
-                    if f=='branch': v=Branch.objects.get(code=v)
-                    if f=='service': v=Service.objects.get(code=v)
-                    data[f]=v
-                lookup={'code':data['code']} if 'code' in data else ({'service':data['service'],'sequence':data['sequence']} if kind=='sop_tasks' else {'branch':data['branch'],'code':data['code']})
-                model.objects.update_or_create(**lookup,defaults=data); result.append(f'Row {n}: imported')
-            except Exception as e: result.append(f'Row {n}: {e}')
-    return render(request,'operations/csv_import.html',{'kinds':CSV_MODELS.keys(),'result':result})
+    # Keep old bookmarks without bypassing the validated import workflows.
+    if request.method == 'POST':
+        return HttpResponseBadRequest('Direct CSV imports are no longer available. Open Import data and use validate then confirm.')
+    return redirect('import_data')
+
 
 @roles_required('MANAGER')
 def manager_dashboard(request):

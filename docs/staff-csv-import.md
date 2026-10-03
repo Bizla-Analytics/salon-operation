@@ -1,6 +1,8 @@
 # Bulk staff onboarding
 
 Admin or General Manager: **All staff → Upload staff CSV**.
+The same uploader is also available through **Import data → Staff CSV**. Use
+**Import data → Branches and chairs** first if your branches do not exist yet.
 
 1. Download the template, or save your staff sheet as **CSV UTF-8** in Excel.
 2. Use columns `BRANCH, NAME, PH.NO, SECTION, EXPERIENCE, SALARY`.

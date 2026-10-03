@@ -1,0 +1,6 @@
+{{ confirm_form.non_field_errors }}
+<div>{{ confirm_form.actor_password.label_tag }}{{ confirm_form.actor_password }}{{ confirm_form.actor_password.errors }}</div>
+<div>
+  <div class="import-confirm-check">{{ confirm_form.confirmed }}<label for="{{ confirm_form.confirmed.id_for_label }}">{{ confirm_form.confirmed.label }}</label></div>
+  {{ confirm_form.confirmed.errors }}
+</div>

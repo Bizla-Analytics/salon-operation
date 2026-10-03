@@ -4,6 +4,7 @@ from django.http import HttpResponse
 
 from .sop_imports import MAX_UPLOAD
 from .staff_imports import MAX_STAFF_UPLOAD
+from .branch_imports import MAX_BRANCH_UPLOAD
 
 
 class WorkbookUploadLimit(FileUploadHandler):
@@ -22,6 +23,10 @@ class StaffCSVUploadLimit(WorkbookUploadLimit):
     max_bytes = MAX_STAFF_UPLOAD
 
 
+class BranchCSVUploadLimit(WorkbookUploadLimit):
+    max_bytes = MAX_BRANCH_UPLOAD
+
+
 class WorkbookUploadLimitMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -30,6 +35,7 @@ class WorkbookUploadLimitMiddleware:
         limits = {
             '/admin-panel/import/workbook/': (MAX_UPLOAD, WorkbookUploadLimit, 'Workbook'),
             '/staff/import/': (MAX_STAFF_UPLOAD, StaffCSVUploadLimit, 'Staff CSV'),
+            '/imports/branches/': (MAX_BRANCH_UPLOAD, BranchCSVUploadLimit, 'Branch CSV'),
         }
         if request.method == 'POST' and request.path in limits:
             maximum, handler, label = limits[request.path]
